@@ -24,7 +24,8 @@
     "@vitejs/plugin-react": "^4.7.0",
     "tailwindcss": "^4.2.2",
     "postcss": "^8.5.3",
-    "autoprefixer": "^10.4.20"
+    "autoprefixer": "^10.4.20",
+    "lightningcss": "^1.29.1"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.2.2",

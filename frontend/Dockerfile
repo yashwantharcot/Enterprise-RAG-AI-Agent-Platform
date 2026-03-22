@@ -2,7 +2,7 @@
 FROM node:20-slim as build
 WORKDIR /app
 COPY package*.json ./
-RUN npm install --include=dev
+RUN npm install --include=dev && npm rebuild lightningcss
 COPY . .
 RUN npm run build
 
