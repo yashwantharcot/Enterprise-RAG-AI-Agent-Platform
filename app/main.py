@@ -189,7 +189,7 @@ app.add_middleware(
         "https://devqa-api.dealdox.io"
     ],
     # Also allow any localhost/127.0.0.1 port for local FE (e.g., 5173, 8080, 4200)
-    allow_origin_regex=r"https?://(localhost|127\.0\.0\.1)(:\d+)?$",
+    allow_origin_regex=r"https?://(localhost|127\.0\.0\.1|.*\.up\.railway\.app)(:\d+)?$",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

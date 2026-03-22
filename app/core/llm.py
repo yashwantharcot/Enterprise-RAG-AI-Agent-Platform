@@ -87,9 +87,9 @@ class OpenAIEngine:
         paid_models = [self.model, "gpt-4o-mini"]
         # Prefer Groq first to avoid Gemini 429 delays
         free_models = [
+            {"provider": "google", "model": "gemini-1.5-flash"},
             {"provider": "groq", "model": "llama-3.3-70b-versatile"},
             {"provider": "groq", "model": "mixtral-8x7b-32768"},
-            {"provider": "google", "model": "gemini-1.5-flash"},
         ]
         if SKIP_GROQ_FREE:
             free_models = [m for m in free_models if m["provider"] != "groq"]
@@ -161,9 +161,9 @@ class OpenAIEngine:
         _log_prompt_debug(prompt, origin="chat")
         paid_models = [self.model, "gpt-4o-mini"]
         free_models = [
+            {"provider": "google", "model": "gemini-1.5-flash"},
             {"provider": "groq", "model": "llama-3.3-70b-versatile"},
             {"provider": "groq", "model": "mixtral-8x7b-32768"},
-            {"provider": "google", "model": "gemini-1.5-flash"},
         ]
         if SKIP_GROQ_FREE:
             free_models = [m for m in free_models if m["provider"] != "groq"]
