@@ -1,3 +1,4 @@
+import React from 'react';
 import { Layout, MessageSquare, Plus, Trash2, Github, ExternalLink } from 'lucide-react';
 import { Button } from './common/Button';
 
