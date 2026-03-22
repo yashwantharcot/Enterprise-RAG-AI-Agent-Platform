@@ -5,7 +5,7 @@ import type { Message } from './components/ChatWindow';
 import { UploadSection } from './components/UploadSection';
 import { queryPdf } from './services/api';
 
-const DEFAULT_BACKEND_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+const DEFAULT_BACKEND_URL = import.meta.env.VITE_API_URL || 'https://retrival-augmented-generation-ai-agent-backend-production.up.railway.app';
 
 function App() {
   const [activeTab, setActiveTab] = useState<'upload' | 'chat'>('upload');
