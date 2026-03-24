@@ -73,6 +73,14 @@ export const uploadPdf = async (file: File, sessionId?: string): Promise<UploadR
   return response.data;
 };
 
+export const uploadUrl = async (url: string, sessionId?: string): Promise<UploadResponse> => {
+  const response = await api.post<UploadResponse>('/pdf-qa/upload_url', {
+    url,
+    session_id: sessionId || undefined
+  });
+  return response.data;
+};
+
 export const queryPdf = async (req: QueryRequest): Promise<QueryResponse> => {
   const response = await api.post<QueryResponse>('/pdf-qa/query', req);
   return response.data;
@@ -80,6 +88,42 @@ export const queryPdf = async (req: QueryRequest): Promise<QueryResponse> => {
 
 export const getHistory = async (sessionId: string): Promise<{ role: 'user' | 'assistant'; content: string }[]> => {
   const response = await api.get<{ role: 'user' | 'assistant'; content: string }[]>(`/pdf-qa/history/${sessionId}`);
+  return response.data;
+};
+
+export interface DocumentItem {
+  filename: string;
+  chunks: number;
+  uploaded_at: string | null;
+}
+
+export const getDocuments = async (sessionId: string): Promise<DocumentItem[]> => {
+  const response = await api.get<DocumentItem[]>(`/pdf-qa/documents/${sessionId}`);
+  return response.data;
+};
+
+export const deleteDocument = async (sessionId: string, filename: string): Promise<{ message: string }> => {
+  const response = await api.delete<{ message: string }>(`/pdf-qa/documents/${sessionId}/${filename}`);
+  return response.data;
+};
+
+export interface SessionItem {
+  session_id: string;
+  name: string;
+}
+
+export const getRecentSessions = async (): Promise<SessionItem[]> => {
+  const response = await api.get<SessionItem[]>('/pdf-qa/recent_sessions');
+  return response.data;
+};
+
+export const renameSession = async (sessionId: string, name: string): Promise<{ message: string }> => {
+  const response = await api.put<{ message: string }>(`/pdf-qa/sessions/${sessionId}?name=${encodeURIComponent(name)}`);
+  return response.data;
+};
+
+export const deleteSession = async (sessionId: string): Promise<{ message: string }> => {
+  const response = await api.delete<{ message: string }>(`/pdf-qa/sessions/${sessionId}`);
   return response.data;
 };
 

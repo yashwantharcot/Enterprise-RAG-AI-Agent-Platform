@@ -5,7 +5,7 @@ import type { Message } from './components/ChatWindow';
 import { UploadSection } from './components/UploadSection';
 import { Login } from './components/Login';
 import { Register } from './components/Register';
-import { queryPdf, getHistory } from './services/api';
+import { queryPdf, getHistory, getRecentSessions, renameSession, deleteSession } from './services/api';
 
 const DEFAULT_BACKEND_URL = import.meta.env.VITE_API_URL || 'https://retrival-augmented-generation-ai-agent-backend-production.up.railway.app';
 
@@ -16,9 +16,11 @@ function App() {
   const [activeTab, setActiveTab] = useState<'upload' | 'chat'>('upload');
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
-  const [recentSessions, setRecentSessions] = useState<{ id: string; name: string }[]>([]);
+  const [recentSessions, setRecentSessions] = useState<{ session_id: string; name: string }[]>([]);
   const [backendUrl, setBackendUrl] = useState(DEFAULT_BACKEND_URL);
   const [topK, setTopK] = useState(5);
+  const [selectedModel, setSelectedModel] = useState('gemini-1.5-flash');
+  const [selectedPersona, setSelectedPersona] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
   // Load session from URL
@@ -31,11 +33,16 @@ function App() {
       setActiveTab('chat');
     }
     
-    // Load recent sessions from localStorage
-    const saved = localStorage.getItem('recent_sessions');
-    if (saved) {
-      setRecentSessions(JSON.parse(saved));
-    }
+    // Load recent sessions from Backend
+    const fetchSessions = async () => {
+      try {
+        const sessions = await getRecentSessions();
+        setRecentSessions(sessions);
+      } catch (err) {
+        console.error("Failed to fetch sessions:", err);
+      }
+    };
+    if (token) fetchSessions();
   }, [token]);
 
   // Persist session to URL and localStorage
@@ -49,10 +56,8 @@ function App() {
 
   const addRecentSession = (id: string, name: string) => {
     setRecentSessions((prev) => {
-      const filtered = prev.filter(s => s.id !== id);
-      const updated = [{ id, name }, ...filtered].slice(0, 10);
-      localStorage.setItem('recent_sessions', JSON.stringify(updated));
-      return updated;
+      const filtered = prev.filter(s => s.session_id !== id);
+      return [{ session_id: id, name }, ...filtered];
     });
   };
 
@@ -70,19 +75,61 @@ function App() {
     setIsLoading(true);
 
     try {
-      const resp = await queryPdf({
-        session_id: sessionId,
-        query: content,
-        top_k: topK,
+      const response = await fetch(`${backendUrl}/api/pdf-qa/query`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        },
+        body: JSON.stringify({ session_id: sessionId, query: content, top_k: topK, model: selectedModel, system_prompt: selectedPersona })
       });
 
-      const assistantMessage: Message = {
-        role: 'assistant',
-        content: resp.answer,
-        sources: resp.sources,
-      };
+      if (!response.ok) throw new Error(`Query failed: ${response.statusText}`);
 
-      setMessages((prev) => [...prev, assistantMessage]);
+      setMessages((prev) => [...prev, { role: 'assistant', content: "", sources: [] }]);
+      const t0 = performance.now();
+      const reader = response.body?.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+
+      while (reader) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        let boundary = buffer.indexOf('\n\n');
+        while (boundary !== -1) {
+          const frame = buffer.slice(0, boundary).trim();
+          buffer = buffer.slice(boundary + 2);
+          if (frame.startsWith('data: ')) {
+            try {
+              const data = JSON.parse(frame.slice(6));
+              setMessages((prev) => {
+                const updated = [...prev];
+                const last = updated[updated.length - 1];
+                if (data.answer) last.content += data.answer;
+                if (data.sources) last.sources = data.sources;
+                return updated;
+              });
+            } catch (e) { }
+          }
+          boundary = buffer.indexOf('\n\n');
+        }
+      }
+
+      const t1 = performance.now();
+      const duration = (t1 - t0) / 1000;
+
+      setMessages((prev) => {
+        const updated = [...prev];
+        const last = updated[updated.length - 1];
+        if (last && last.role === 'assistant') {
+          last.stats = {
+            duration: Number(duration.toFixed(1)),
+            words: last.content.trim().split(/\s+/).filter(Boolean).length
+          };
+        }
+        return updated;
+      });
     } catch (err) {
       console.error("Query failed:", err);
       setMessages((prev) => [...prev, { 
@@ -149,10 +196,26 @@ function App() {
         }}
         onNewSession={handleNewSession}
         onClearHistory={handleClearHistory}
+        onRenameSession={async (id, name) => {
+          await renameSession(id, name);
+          setRecentSessions((prev) => prev.map(s => s.session_id === id ? { ...s, name } : s));
+        }}
+        onDeleteSession={async (id) => {
+          await deleteSession(id);
+          setRecentSessions((prev) => prev.filter(s => s.session_id !== id));
+          if (sessionId === id) {
+            setSessionId(null);
+            setMessages([]);
+          }
+        }}
         backendUrl={backendUrl}
         setBackendUrl={setBackendUrl}
         topK={topK}
         setTopK={setTopK}
+        selectedModel={selectedModel}
+        setSelectedModel={setSelectedModel}
+        selectedPersona={selectedPersona}
+        setSelectedPersona={setSelectedPersona}
         onLogout={handleLogout}
       />
 

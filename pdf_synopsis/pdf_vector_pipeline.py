@@ -1,3 +1,7 @@
+import fitz  # PyMuPDF
+from PIL import Image
+import io
+
 try:
     import pdfplumber
 except ImportError:
@@ -18,32 +22,42 @@ from typing import List
 # --- PDF to text (hybrid: selectable text + OCR fallback) ---
 def extract_pdf_text(pdf_path: str) -> str:
     text_content = ""
-    if not pdfplumber:
-        print("[WARNING] pdfplumber not installed. Cannot extract selectable text.")
+    try:
+        doc = fitz.open(pdf_path)
+    except Exception as e:
+        print(f"[ERROR] Failed to open PDF with PyMuPDF: {e}")
         return ""
-    
-    with pdfplumber.open(pdf_path) as pdf:
-        for i, page in enumerate(pdf.pages):
-            try:
-                page_text = page.extract_text()
-            except Exception:
-                page_text = None
-            if page_text and page_text.strip():
+        
+    for i, page in enumerate(doc):
+        try:
+            # 1. Try regular selectable text extract 
+            page_text = page.get_text()
+            if page_text and len(page_text.strip()) > 50:
                 text_content += page_text + "\n"
+                continue
+                
+            # 2. Fallback to Gemini Multimodal OCR if selectable text is too thin
+            print(f"[INFO] Page {i+1} is likely scanned (selectable text len={len(page_text.strip()) if page_text else 0}). Triggering Gemini OCR...")
+            
+            pix = page.get_pixmap()
+            img_bytes = pix.tobytes("png")
+            pil_img = Image.open(io.BytesIO(img_bytes))
+            
+            from app.core.llm import google_client
+            if google_client:
+                 resp = google_client.models.generate_content(
+                     model="gemini-1.5-flash",
+                     contents=["Extract all text from this page. If it has tables, maintain layout.", pil_img]
+                 )
+                 if resp.text:
+                      text_content += resp.text + "\n"
             else:
-                # OCR fallback for scanned pages
-                if convert_from_path and pytesseract:
-                    with tempfile.TemporaryDirectory() as temp_dir:
-                        images = convert_from_path(pdf_path, first_page=i+1, last_page=i+1, output_folder=temp_dir)
-                        for image in images:
-                            try:
-                                ocr_text = pytesseract.image_to_string(image)
-                            except Exception:
-                                ocr_text = ""
-                            text_content += ocr_text + "\n"
-                else:
-                    # If OCR tools not available, skip page
-                    continue
+                 print(f"[WARNING] google_client not initialized, skipping OCR for page {i+1}")
+                 
+        except Exception as e:
+             print(f"[WARNING] OCR Fallback failed on page {i+1}: {e}")
+             
+    doc.close()
     return text_content
 
 

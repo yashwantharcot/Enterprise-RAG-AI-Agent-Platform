@@ -152,6 +152,125 @@ class OpenAIEngine:
                     continue
         return response_text or "⚠️ Error: Unable to generate response with available models."
     
+    def chat_stream(self, prompt: str, model_name: Optional[str] = None, system_prompt: Optional[str] = None):
+        _log_prompt_debug(prompt, origin=f"chat_stream_explicit[{model_name}]" if model_name else "chat_stream")
+        
+        sys_msg = system_prompt if system_prompt else "You are a knowledgeable assistant."
+        messages = [{"role": "system", "content": sys_msg}, {"role": "user", "content": prompt}]
+        combined_prompt = f"System Instruction: {sys_msg}\n\nUser Question: {prompt}"
+        
+        if model_name:
+            try:
+                if model_name.startswith("gpt") and self.client:
+                    response = self.client.chat.completions.create(
+                        model=model_name,
+                        messages=messages,
+                        temperature=0.2, stream=True
+                    )
+                    for chunk in response:
+                        if chunk.choices and chunk.choices[0].delta.content:
+                            yield chunk.choices[0].delta.content
+                    return
+                elif "gemini" in model_name and google_client:
+                    response = google_client.models.generate_content_stream(model=model_name, contents=combined_prompt)
+                    for chunk in response:
+                        if chunk.text:
+                            yield chunk.text
+                    return
+                elif ("llama" in model_name or "mixtral" in model_name):
+                    from groq import Groq
+                    groq_key = os.getenv("GROQ_API_KEY")
+                    if groq_key:
+                        groq_client = Groq(api_key=groq_key)
+                        response = groq_client.chat.completions.create(
+                            model=model_name,
+                            messages=messages,
+                            temperature=0.2, stream=True
+                        )
+                        for chunk in response:
+                            if chunk.choices and chunk.choices[0].delta.content:
+                                yield chunk.choices[0].delta.content
+                        return
+            except Exception as e:
+                print(f"[Explicit LLM] Model {model_name} failed: {e}. Falling back to default list.")
+
+        paid_models = [self.model, "gpt-4o-mini"]
+        free_models = [
+            {"provider": "google", "model": "gemini-1.5-flash"},
+            {"provider": "groq", "model": "llama-3.3-70b-versatile"},
+            {"provider": "groq", "model": "mixtral-8x7b-32768"},
+        ]
+        if SKIP_GROQ_FREE:
+            free_models = [m for m in free_models if m["provider"] != "groq"]
+        if SKIP_GOOGLE_FREE or not os.getenv("GOOGLE_API_KEY"):
+            free_models = [m for m in free_models if m["provider"] != "google"]
+
+        if USE_OPENAI:
+            for model_name in paid_models:
+                try:
+                    if self.client:
+                        response = self.client.chat.completions.create(
+                            model=model_name,
+                            messages=messages,
+                            temperature=0.2,
+                            stream=True
+                        )
+                        first_chunk_found = False
+                        for chunk in response:
+                            if chunk.choices and chunk.choices[0].delta.content:
+                                yield chunk.choices[0].delta.content
+                                first_chunk_found = True
+                        if first_chunk_found:
+                            return
+                    else:
+                        print(f"Skipping paid model {model_name} (OpenAI client not initialized)")
+                except Exception as e:
+                    print(f"Paid model {model_name} stream failed: {e}")
+                    continue
+
+        if (not DISABLE_FREE_MODELS):
+            for fm in free_models:
+                try:
+                    if fm["provider"] == "groq":
+                        from groq import Groq
+                        groq_key = os.getenv("GROQ_API_KEY")
+                        if groq_key:
+                            groq_client = Groq(api_key=groq_key)
+                            resp = groq_client.chat.completions.create(
+                                model=fm["model"],
+                                messages=messages,
+                                temperature=0.2,
+                                stream=True
+                            )
+                            first_chunk_found = False
+                            for chunk in resp:
+                                if chunk.choices and chunk.choices[0].delta.content:
+                                    yield chunk.choices[0].delta.content
+                                    first_chunk_found = True
+                            if first_chunk_found:
+                                return
+                        else:
+                            print(f"Skipping Groq model {fm['model']} (API key missing)")
+                    elif fm["provider"] == "google":
+                        if not google_client:
+                            continue
+                        resp = google_client.models.generate_content_stream(
+                            model=fm["model"],
+                            contents=combined_prompt
+                        )
+                        first_chunk_found = False
+                        for chunk in resp:
+                            if chunk.text:
+                                yield chunk.text
+                                first_chunk_found = True
+                        if first_chunk_found:
+                            return
+                except Exception as e:
+                    print(f"Free model {fm['model']} stream failed: {e}")
+                    continue
+
+        yield "⚠️ Error: Unable to generate stream with available models."
+
     def chat(self, prompt: str) -> str:
         _log_prompt_debug(prompt, origin="chat")
         paid_models = [self.model, "gpt-4o-mini"]

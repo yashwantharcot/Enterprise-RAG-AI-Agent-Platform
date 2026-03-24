@@ -10,6 +10,7 @@ from uuid import uuid4
 from app.core.embeddings import get_query_embedding
 from app.core.llm import llm_engine
 from pdf_synopsis.pdf_vector_pipeline import extract_pdf_text
+from app.services.scraper import scrape_url
 
 router = APIRouter()
 
@@ -45,24 +46,79 @@ class UploadResponse(BaseModel):
     session_id: str
     chunks: int
 
+class UrlRequest(BaseModel):
+    url: str
+    session_id: Optional[str] = None
+
+@router.post('/upload_url', response_model=UploadResponse)
+async def upload_url(req: UrlRequest, user_id: str = Depends(get_current_user)):
+    sid = req.session_id or str(uuid4())
+    
+    try:
+        text = scrape_url(req.url)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+    chunks = chunk_text_simple(text)
+    if not chunks:
+        raise HTTPException(status_code=400, detail="No text extracted from URL")
+
+    embeddings = []
+    for chunk in chunks:
+        try:
+            emb = get_query_embedding(chunk)
+            embeddings.append(emb)
+        except Exception as e:
+            print(f"[WARNING] Failed to embed chunk: {e}")
+            continue
+
+    if not embeddings:
+         raise HTTPException(status_code=500, detail="Failed to generate embeddings for URL")
+
+    if sid not in pdf_sessions:
+        pdf_sessions[sid] = { 'chunks': [], 'embeddings': [] }
+    
+    pdf_sessions[sid]['chunks'].extend([{"text": c, "filename": req.url} for c in chunks[:len(embeddings)]])
+    pdf_sessions[sid]['embeddings'].extend(embeddings)
+
+    try:
+        from app.db.mongo import db
+        from datetime import datetime
+        db_docs = []
+        for c, e in zip(chunks[:len(embeddings)], embeddings):
+            db_docs.append({
+                "session_id": sid,
+                "filename": req.url,
+                "chunk": {"text": c},
+                "embedding": e,
+                "created_at": datetime.utcnow()
+            })
+        if db_docs:
+            db["documents_embedded"].insert_many(db_docs)
+    except Exception as e:
+        print(f"[WARNING] Mongo backup failed: {e}")
+
+    return UploadResponse(session_id=sid, chunks=len(embeddings))
+
 
 @router.post('/upload_pdf', response_model=UploadResponse)
 async def upload_pdf(file: UploadFile = File(...), session_id: Optional[str] = Form(None), user_id: str = Depends(get_current_user)):
-    # Save uploaded file to temp and extract text
-    suffix = os.path.splitext(file.filename)[1] if file.filename else '.pdf'
     sid = session_id or str(uuid4())
-    with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
-        content = await file.read()
-        tmp.write(content)
-        tmp_path = tmp.name
+    # Save uploaded file to app/uploads/{sid}
+    upload_dir = f"app/uploads/{sid}"
+    os.makedirs(upload_dir, exist_ok=True)
+    save_path = os.path.join(upload_dir, file.filename)
+    
+    content = await file.read()
+    with open(save_path, 'wb') as f:
+        f.write(content)
 
     try:
-        text = extract_pdf_text(tmp_path)
+        text = extract_pdf_text(save_path)
     except Exception as e:
-        os.unlink(tmp_path)
+        if os.path.exists(save_path):
+            os.unlink(save_path)
         raise HTTPException(status_code=500, detail=f"PDF extraction failed: {e}")
-
-    os.unlink(tmp_path)
 
     chunks = chunk_text_simple(text)
     if not chunks:
@@ -85,7 +141,7 @@ async def upload_pdf(file: UploadFile = File(...), session_id: Optional[str] = F
     if sid not in pdf_sessions:
         pdf_sessions[sid] = { 'chunks': [], 'embeddings': [] }
     
-    pdf_sessions[sid]['chunks'].extend(chunks[:len(embeddings)])
+    pdf_sessions[sid]['chunks'].extend([{"text": c, "filename": file.filename} for c in chunks[:len(embeddings)]])
     pdf_sessions[sid]['embeddings'].extend(embeddings)
 
     # Persist chunks to MongoDB for scaling across restarts
@@ -113,6 +169,8 @@ class QueryRequest(BaseModel):
     session_id: str
     query: str
     top_k: Optional[int] = 5
+    model: Optional[str] = "gemini-1.5-flash"
+    system_prompt: Optional[str] = None
 
 
 @router.post('/query')
@@ -159,8 +217,13 @@ def query_pdf(req: QueryRequest, user_id: str = Depends(get_current_user)):
     sources = []
     for idx, score in top_results:
         try:
-            context_blocks.append(session['chunks'][idx])
-            sources.append({'idx': idx, 'score': round(score, 4)})
+            context_blocks.append(session['chunks'][idx]['text'])
+            sources.append({
+                'idx': idx, 
+                'score': float(round(score, 4)),
+                'text': session['chunks'][idx]['text'],
+                'filename': session['chunks'][idx]['filename']
+            })
         except Exception:
             pass
 
@@ -170,20 +233,78 @@ def query_pdf(req: QueryRequest, user_id: str = Depends(get_current_user)):
     prompt += f"Question: {req.query}\nAnswer concisely and cite which excerpt you used (e.g., Excerpt 1)."
 
     # Use existing cloud LLM engine instead of local flan-t5
-    answer = llm_engine.chat(prompt)
+    from fastapi.responses import StreamingResponse
+    import json
 
-    # Save conversation to history
+    def generate_sse():
+        full_answer = ""
+        try:
+            # Send sources in first frame to optimize bandwidth
+            yield f"data: {json.dumps({'answer': '', 'sources': sources, 'session_id': req.session_id})}\n\n"
+            
+            for chunk in llm_engine.chat_stream(prompt, model_name=req.model, system_prompt=req.system_prompt):
+                full_answer += chunk
+                yield f"data: {json.dumps({'answer': chunk})}\n\n"
+        except Exception as e:
+            yield f"data: {json.dumps({'error': str(e)})}\n\n"
+            return
+        
+        # Save conversation after full stream loads cleanly
+        try:
+            from app.db.mongo import save_conversation, db
+            from datetime import datetime
+            save_conversation(req.session_id, req.query, req.query, full_answer)
+            
+            # Create session if not present for sidebar Renaming Tracking
+            if not db["sessions"].find_one({"session_id": req.session_id}):
+                db["sessions"].insert_one({
+                    "session_id": req.session_id,
+                    "name": req.query[:40] + "..." if len(req.query) > 40 else req.query,
+                    "user_id": user_id,
+                    "created_at": datetime.utcnow()
+                })
+        except Exception as e:
+            print(f"Failed to save conversation: {e}")
+
+    return StreamingResponse(generate_sse(), media_type="text/event-stream")
+
+@router.get("/documents/{session_id}")
+def get_documents(session_id: str, user_id: str = Depends(get_current_user)):
+    from app.db.mongo import db
     try:
-        from app.db.mongo import save_conversation
-        save_conversation(req.session_id, req.query, req.query, answer)
+        distinct_files = db["documents_embedded"].aggregate([
+            {"$match": {"session_id": session_id}},
+            {"$group": {
+                "_id": "$filename",
+                "chunks": {"$sum": 1},
+                "uploaded_at": {"$first": "$timestamp"}
+            }}
+        ])
+        result = []
+        for f in distinct_files:
+            result.append({
+                "filename": f["_id"] if f["_id"] else "Unknown",
+                "chunks": f["chunks"],
+                "uploaded_at": f.get("uploaded_at")
+            })
+        return result
     except Exception as e:
-        print(f"Failed to save conversation: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to fetch documents: {e}")
 
-    return {
-        'answer': answer,
-        'sources': sources,
-        'session_id': req.session_id
-    }
+@router.delete("/documents/{session_id}/{filename}")
+def delete_document(session_id: str, filename: str, user_id: str = Depends(get_current_user)):
+    from app.db.mongo import db
+    try:
+        result = db["documents_embedded"].delete_many({
+            "session_id": session_id,
+            "filename": filename
+        })
+        # Invalidate memory cache so next query reloads from Mongo
+        if session_id in pdf_sessions:
+            del pdf_sessions[session_id]
+        return {"message": f"Deleted {result.deleted_count} chunks for {filename}"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to delete document: {e}")
 
 @router.get("/history/{session_id}")
 def get_history(session_id: str, user_id: str = Depends(get_current_user)):
@@ -196,3 +317,42 @@ def get_history(session_id: str, user_id: str = Depends(get_current_user)):
         messages.append({"role": "assistant", "content": item.get("response", "")})
         
     return messages
+
+@router.get("/recent_sessions")
+def get_recent_sessions(user_id: str = Depends(get_current_user)):
+    from app.db.mongo import db
+    cursor = db["sessions"].find({"user_id": user_id}).sort("created_at", -1)
+    result = []
+    for doc in cursor:
+        result.append({
+            "session_id": doc["session_id"],
+            "name": doc.get("name", "Untitled")
+        })
+    return result
+
+@router.put("/sessions/{session_id}")
+def rename_session(session_id: str, name: str, user_id: str = Depends(get_current_user)):
+    from app.db.mongo import db
+    db["sessions"].update_one(
+        {"session_id": session_id, "user_id": user_id},
+        {"$set": {"name": name}}
+    )
+    return {"message": "Session renamed"}
+
+@router.delete("/sessions/{session_id}")
+def delete_session(session_id: str, user_id: str = Depends(get_current_user)):
+    from app.db.mongo import db
+    db["sessions"].delete_one({"session_id": session_id, "user_id": user_id})
+    db["conversation_history"].delete_many({"session_id": session_id})
+    db["documents_embedded"].delete_many({"session_id": session_id})
+    if session_id in pdf_sessions:
+        del pdf_sessions[session_id]
+    return {"message": "Session deleted fully"}
+
+@router.get("/file/{session_id}/{filename}")
+def get_pdf_file(session_id: str, filename: str, user_id: str = Depends(get_current_user)):
+    file_path = f"app/uploads/{session_id}/{filename}"
+    if not os.path.exists(file_path):
+        raise HTTPException(status_code=404, detail="File not found")
+    from fastapi.responses import FileResponse
+    return FileResponse(file_path, media_type='application/pdf')

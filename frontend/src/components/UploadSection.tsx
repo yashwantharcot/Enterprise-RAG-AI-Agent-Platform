@@ -1,7 +1,8 @@
-import React, { useState, useCallback } from 'react';
-import { Upload, FileText, AlertCircle, Info } from 'lucide-react';
+import React, { useState, useCallback, useEffect } from 'react';
+import { Upload, FileText, AlertCircle, Info, Globe } from 'lucide-react';
 import { Button } from './common/Button';
-import { uploadPdf } from '../services/api';
+import { uploadPdf, uploadUrl, getDocuments, deleteDocument, DocumentItem } from '../services/api';
+import { Trash2 } from 'lucide-react';
 
 interface UploadSectionProps {
   onUploadSuccess: (sessionId: string, chunks: number) => void;
@@ -16,6 +17,35 @@ export const UploadSection: React.FC<UploadSectionProps> = ({
   const [isUploading, setIsUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [dragActive, setDragActive] = useState(false);
+  const [documents, setDocuments] = useState<DocumentItem[]>([]);
+  const [urlInput, setUrlInput] = useState('');
+  const [isUploadingUrl, setIsUploadingUrl] = useState(false);
+
+  const fetchDocs = useCallback(async () => {
+    if (currentSessionId) {
+      try {
+        const docs = await getDocuments(currentSessionId);
+        setDocuments(docs);
+      } catch (err) {
+        console.error("Failed to fetch docs:", err);
+      }
+    }
+  }, [currentSessionId]);
+
+  useEffect(() => {
+    fetchDocs();
+  }, [fetchDocs]);
+
+  const handleDelete = async (filename: string) => {
+    if (!currentSessionId) return;
+    if (!confirm(`Are you sure you want to delete ${filename}?`)) return;
+    try {
+      await deleteDocument(currentSessionId, filename);
+      fetchDocs(); // Refresh!
+    } catch (err) {
+      console.error("Failed to delete doc:", err);
+    }
+  };
 
   const handleDrag = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -57,10 +87,27 @@ export const UploadSection: React.FC<UploadSectionProps> = ({
       const result = await uploadPdf(file, currentSessionId || undefined);
       onUploadSuccess(result.session_id, result.chunks);
       setFile(null);
+      fetchDocs(); // Refresh list after upload!
     } catch (err: any) {
       setError(err.response?.data?.detail || "Upload failed. Please try again.");
     } finally {
       setIsUploading(false);
+    }
+  };
+
+  const handleUploadUrl = async () => {
+    if (!urlInput.trim()) return;
+    setIsUploadingUrl(true);
+    setError(null);
+    try {
+      const result = await uploadUrl(urlInput, currentSessionId || undefined);
+      onUploadSuccess(result.session_id, result.chunks);
+      setUrlInput('');
+      fetchDocs(); 
+    } catch (err: any) {
+      setError(err.response?.data?.detail || "URL Import failed. Please try again.");
+    } finally {
+      setIsUploadingUrl(false);
     }
   };
 
@@ -118,6 +165,29 @@ export const UploadSection: React.FC<UploadSectionProps> = ({
             )}
           </div>
 
+          <div className="bg-card rounded-2xl border border-border p-6 space-y-4 shadow-xl">
+             <h3 className="text-md font-bold text-white flex items-center gap-2">
+               <Globe size={18} className="text-primary-400" />
+               Import from Web URL
+             </h3>
+             <div className="flex gap-2">
+               <input 
+                 type="url"
+                 placeholder="https://example.com/docs"
+                 value={urlInput}
+                 onChange={(e) => setUrlInput(e.target.value)}
+                 className="flex-1 bg-black/40 border border-border rounded-xl px-4 py-2 text-sm text-white placeholder:text-gray-600 focus:outline-none focus:ring-2 focus:ring-primary-500/50"
+               />
+               <Button 
+                 onClick={handleUploadUrl}
+                 disabled={!urlInput.trim() || isUploadingUrl}
+                 isLoading={isUploadingUrl}
+               >
+                 {isUploadingUrl ? "Fetching..." : "Fetch"}
+               </Button>
+             </div>
+          </div>
+
           {currentSessionId && (
             <div className="bg-primary-500/10 border border-primary-500/20 rounded-xl p-4 flex items-center gap-2 text-primary-400">
               <Info size={18} />
@@ -149,6 +219,39 @@ export const UploadSection: React.FC<UploadSectionProps> = ({
             <div className="bg-red-500/10 border border-red-500/20 rounded-xl p-4 flex items-center gap-3 text-red-400 animate-shake">
               <AlertCircle size={20} />
               <p className="text-sm font-medium">{error}</p>
+            </div>
+          )}
+
+          {currentSessionId && (
+            <div className="bg-card rounded-2xl border border-border p-6 space-y-4 shadow-xl">
+              <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                <div className="w-2 h-6 bg-primary-500 rounded-full"></div>
+                Workspace Documents
+              </h3>
+              {documents.length === 0 ? (
+                <p className="text-gray-500 text-sm">No documents in this workspace yet.</p>
+              ) : (
+                <ul className="divide-y divide-border">
+                  {documents.map((doc) => (
+                    <li key={doc.filename} className="py-3 flex items-center justify-between text-sm group">
+                      <div>
+                        <p className="text-white font-semibold flex items-center gap-2">
+                          <FileText size={16} className="text-gray-400" />
+                          {doc.filename}
+                        </p>
+                        <p className="text-gray-500 text-xs mt-1">{doc.chunks} chunks</p>
+                      </div>
+                      <Button 
+                        onClick={() => handleDelete(doc.filename)}
+                        variant="ghost" size="sm" className="text-red-400 hover:bg-red-500/10 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity"
+                      >
+                        <Trash2 size={14} />
+                        Delete
+                      </Button>
+                    </li>
+                  ))}
+                </ul>
+              )}
             </div>
           )}
         </div>
