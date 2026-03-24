@@ -1,4 +1,5 @@
-from fastapi import APIRouter, UploadFile, File, Form, HTTPException
+from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Depends
+from app.utils.dependencies import get_current_user
 from pydantic import BaseModel
 from typing import Optional, List
 import tempfile
@@ -46,7 +47,7 @@ class UploadResponse(BaseModel):
 
 
 @router.post('/upload_pdf', response_model=UploadResponse)
-async def upload_pdf(file: UploadFile = File(...), session_id: Optional[str] = Form(None)):
+async def upload_pdf(file: UploadFile = File(...), session_id: Optional[str] = Form(None), user_id: str = Depends(get_current_user)):
     # Save uploaded file to temp and extract text
     suffix = os.path.splitext(file.filename)[1] if file.filename else '.pdf'
     sid = session_id or str(uuid4())
@@ -95,7 +96,7 @@ class QueryRequest(BaseModel):
 
 
 @router.post('/query')
-def query_pdf(req: QueryRequest):
+def query_pdf(req: QueryRequest, user_id: str = Depends(get_current_user)):
     session = pdf_sessions.get(req.session_id)
     if not session:
         raise HTTPException(status_code=404, detail='Session not found')
@@ -130,8 +131,27 @@ def query_pdf(req: QueryRequest):
     # Use existing cloud LLM engine instead of local flan-t5
     answer = llm_engine.chat(prompt)
 
+    # Save conversation to history
+    try:
+        from app.db.mongo import save_conversation
+        save_conversation(req.session_id, req.query, req.query, answer)
+    except Exception as e:
+        print(f"Failed to save conversation: {e}")
+
     return {
         'answer': answer,
         'sources': sources,
         'session_id': req.session_id
     }
+
+@router.get("/history/{session_id}")
+def get_history(session_id: str, user_id: str = Depends(get_current_user)):
+    from app.db.mongo import db
+    hist = list(db["conversation_history"].find({"session_id": session_id}).sort("timestamp", 1))
+    
+    messages = []
+    for item in hist:
+        messages.append({"role": "user", "content": item.get("original_query", "")})
+        messages.append({"role": "assistant", "content": item.get("response", "")})
+        
+    return messages

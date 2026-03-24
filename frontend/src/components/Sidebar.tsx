@@ -1,5 +1,5 @@
 import React from 'react';
-import { Layout, MessageSquare, Plus, Trash2, Github, ExternalLink } from 'lucide-react';
+import { Layout, MessageSquare, Plus, Trash2, Github, ExternalLink, LogOut } from 'lucide-react';
 import { Button } from './common/Button';
 
 interface SidebarProps {
@@ -12,6 +12,7 @@ interface SidebarProps {
   setBackendUrl: (url: string) => void;
   topK: number;
   setTopK: (k: number) => void;
+  onLogout: () => void;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -24,6 +25,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   setBackendUrl,
   topK,
   setTopK,
+  onLogout,
 }) => {
   return (
     <div className="w-80 h-full bg-sidebar border-r border-border flex flex-col pt-6 pb-4">
@@ -106,6 +108,15 @@ export const Sidebar: React.FC<SidebarProps> = ({
             Clear Current History
           </Button>
         )}
+        <Button 
+          onClick={onLogout} 
+          variant="secondary" 
+          size="sm" 
+          className="w-full justify-start gap-2 bg-red-950/20 text-red-500 hover:bg-red-950/40 border border-red-900/40 mt-2"
+        >
+          <LogOut size={14} />
+          Logout
+        </Button>
         <div className="flex items-center justify-between px-2 pt-2">
           <div className="flex gap-4">
             <a href="#" className="text-gray-500 hover:text-white transition-colors">

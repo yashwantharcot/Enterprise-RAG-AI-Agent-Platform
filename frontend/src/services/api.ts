@@ -9,6 +9,17 @@ const api = axios.create({
   },
 });
 
+// Add request interceptor to attach token
+api.interceptors.request.use((config) => {
+  const token = localStorage.getItem('token');
+  if (token && config.headers) {
+    config.headers.Authorization = `Bearer ${token}`;
+  }
+  return config;
+}, (error) => {
+  return Promise.reject(error);
+});
+
 export interface UploadResponse {
   session_id: string;
   chunks: number;
@@ -25,6 +36,27 @@ export interface QueryResponse {
   sources: { idx: number; score: number }[];
   session_id: string;
 }
+
+export interface LoginRequest {
+  email: string;
+  password: string;
+}
+
+export interface RegisterRequest {
+  name: string;
+  email: string;
+  password: string;
+}
+
+export const register = async (req: RegisterRequest): Promise<{ message: string; user_id: string }> => {
+  const response = await api.post<{ message: string; user_id: string }>('/auth/register', req);
+  return response.data;
+};
+
+export const login = async (req: LoginRequest): Promise<{ access_token: string; refresh_token: string; token_type: string }> => {
+  const response = await api.post<{ access_token: string; refresh_token: string; token_type: string }>('/auth/login', req);
+  return response.data;
+};
 
 export const uploadPdf = async (file: File, sessionId?: string): Promise<UploadResponse> => {
   const formData = new FormData();
@@ -43,6 +75,11 @@ export const uploadPdf = async (file: File, sessionId?: string): Promise<UploadR
 
 export const queryPdf = async (req: QueryRequest): Promise<QueryResponse> => {
   const response = await api.post<QueryResponse>('/pdf-qa/query', req);
+  return response.data;
+};
+
+export const getHistory = async (sessionId: string): Promise<{ role: 'user' | 'assistant'; content: string }[]> => {
+  const response = await api.get<{ role: 'user' | 'assistant'; content: string }[]>(`/pdf-qa/history/${sessionId}`);
   return response.data;
 };
 

@@ -3,11 +3,16 @@ import { Sidebar } from './components/Sidebar';
 import { ChatWindow } from './components/ChatWindow';
 import type { Message } from './components/ChatWindow';
 import { UploadSection } from './components/UploadSection';
-import { queryPdf } from './services/api';
+import { Login } from './components/Login';
+import { Register } from './components/Register';
+import { queryPdf, getHistory } from './services/api';
 
 const DEFAULT_BACKEND_URL = import.meta.env.VITE_API_URL || 'https://retrival-augmented-generation-ai-agent-backend-production.up.railway.app';
 
 function App() {
+  const [token, setToken] = useState<string | null>(localStorage.getItem('token'));
+  const [authView, setAuthView] = useState<'login' | 'register'>('login');
+  
   const [activeTab, setActiveTab] = useState<'upload' | 'chat'>('upload');
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -18,6 +23,7 @@ function App() {
 
   // Load session from URL
   useEffect(() => {
+    if (!token) return; // Wait for auth
     const params = new URLSearchParams(window.location.search);
     const sid = params.get('sid');
     if (sid) {
@@ -30,16 +36,16 @@ function App() {
     if (saved) {
       setRecentSessions(JSON.parse(saved));
     }
-  }, []);
+  }, [token]);
 
   // Persist session to URL and localStorage
   useEffect(() => {
-    if (sessionId) {
+    if (sessionId && token) {
       const url = new URL(window.location.href);
       url.searchParams.set('sid', sessionId);
       window.history.replaceState({}, '', url.toString());
     }
-  }, [sessionId]);
+  }, [sessionId, token]);
 
   const addRecentSession = (id: string, name: string) => {
     setRecentSessions((prev) => {
@@ -101,14 +107,45 @@ function App() {
     setMessages([]);
   };
 
+  const handleLogout = () => {
+    localStorage.removeItem('token');
+    setToken(null);
+    setSessionId(null);
+    setMessages([]);
+    setRecentSessions([]);
+  };
+
+  if (!token) {
+    return authView === 'login' ? (
+      <Login 
+        onLoginSuccess={(t) => {
+          localStorage.setItem('token', t);
+          setToken(t);
+        }} 
+        onToggleToRegister={() => setAuthView('register')} 
+      />
+    ) : (
+      <Register 
+        onRegisterSuccess={() => setAuthView('login')} 
+        onToggleToLogin={() => setAuthView('login')} 
+      />
+    );
+  }
+
   return (
     <div className="flex h-screen w-full bg-[#0d1117] text-white overflow-hidden">
       <Sidebar
         sessions={recentSessions}
         currentSessionId={sessionId}
-        onSelectSession={(id) => {
+        onSelectSession={async (id) => {
           setSessionId(id);
           setActiveTab('chat');
+          try {
+            const hist = await getHistory(id);
+            setMessages(hist);
+          } catch (err) {
+            console.error("Failed to fetch history:", err);
+          }
         }}
         onNewSession={handleNewSession}
         onClearHistory={handleClearHistory}
@@ -116,6 +153,7 @@ function App() {
         setBackendUrl={setBackendUrl}
         topK={topK}
         setTopK={setTopK}
+        onLogout={handleLogout}
       />
 
       <main className="flex-1 flex flex-col h-full overflow-hidden">

@@ -146,16 +146,11 @@ class OpenAIEngine:
                         )
                         response_text = resp.text.strip()
                     if response_text:
-                        warning_msg = (
-                            "⚠️ GPT balance finished, recharge for accurate answers now. "
-                            "Doxi is using free models; accuracy will be less."
-                        )
-                        response_text = f"{warning_msg}\n\n{response_text}"
                         break
                 except Exception as e:
                     print(f"Free model {fm['model']} failed: {e}")
                     continue
-        return response_text or "⚠️ GPT balance finished, recharge for accurate answers now."
+        return response_text or "⚠️ Error: Unable to generate response with available models."
     
     def chat(self, prompt: str) -> str:
         _log_prompt_debug(prompt, origin="chat")
@@ -220,16 +215,11 @@ class OpenAIEngine:
                         )
                         response_text = resp.text.strip()
                     if response_text:
-                        warning_msg = (
-                            "⚠️ GPT balance finished, recharge for accurate answers now. "
-                            "Doxi is using free models; accuracy will be less."
-                        )
-                        response_text = f"{warning_msg}\n\n{response_text}"
                         break
                 except Exception as e:
                     print(f"Free model {fm['model']} failed: {e}")
                     continue
-        return response_text or "⚠️ GPT balance finished, recharge for accurate answers now."
+        return response_text or "⚠️ Error: Unable to generate response with available models."
 
 # Create the llm_engine instance that will be imported by other modules
 llm_engine = OpenAIEngine()
