@@ -22,7 +22,7 @@ from bson.objectid import ObjectId
 uri = os.getenv("MONGODB_URI") or MONGO_URI
 if uri:
     uri = uri.strip('"').strip("'")
-client = MongoClient(uri, tlsCAFile=certifi.where())
+client = MongoClient(uri, tlsCAFile=certifi.where(), tlsAllowInvalidCertificates=True)
 
 MONGODB_DB = os.getenv("MONGODB_DB") or DB_NAME or "dev_db"
 MONGODB_COLLECTION = os.getenv("MONGODB_COLLECTION") or TARGET_COLLECTION or "documents"
@@ -42,7 +42,7 @@ class MongoHandler:
             self.client = client
         else:
             clean_uri = uri.strip('"').strip("'") if uri else uri
-            self.client = MongoClient(clean_uri, tlsCAFile=certifi.where())
+            self.client = MongoClient(clean_uri, tlsCAFile=certifi.where(), tlsAllowInvalidCertificates=True)
         self.db = self.client[db_name]
 
     # === Generic CRUD ===
