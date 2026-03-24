@@ -19,7 +19,10 @@ from bson.objectid import ObjectId
 
 # Consolidate MongoDB setup
 # Initialize client globally once
-client = MongoClient(os.getenv("MONGODB_URI") or MONGO_URI, tlsCAFile=certifi.where())
+uri = os.getenv("MONGODB_URI") or MONGO_URI
+if uri:
+    uri = uri.strip('"').strip("'")
+client = MongoClient(uri, tlsCAFile=certifi.where())
 
 MONGODB_DB = os.getenv("MONGODB_DB") or DB_NAME or "dev_db"
 MONGODB_COLLECTION = os.getenv("MONGODB_COLLECTION") or TARGET_COLLECTION or "documents"
@@ -35,7 +38,11 @@ conversation_col = db["conversation_history"]
 class MongoHandler:
     def __init__(self, uri=MONGO_URI, db_name=DB_NAME):
         # Use the global client if available, otherwise create a new one
-        self.client = client if 'client' in globals() else MongoClient(uri, tlsCAFile=certifi.where())
+        if 'client' in globals():
+            self.client = client
+        else:
+            clean_uri = uri.strip('"').strip("'") if uri else uri
+            self.client = MongoClient(clean_uri, tlsCAFile=certifi.where())
         self.db = self.client[db_name]
 
     # === Generic CRUD ===
