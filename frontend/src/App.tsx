@@ -5,7 +5,7 @@ import type { Message } from './components/ChatWindow';
 import { UploadSection } from './components/UploadSection';
 import { Login } from './components/Login';
 import { Register } from './components/Register';
-import { queryPdf, getHistory, getRecentSessions, renameSession, deleteSession } from './services/api';
+import { queryPdf, getHistory, getRecentSessions, renameSession, deleteSession, updateSessionFolder } from './services/api';
 
 const DEFAULT_BACKEND_URL = import.meta.env.VITE_API_URL || 'https://retrival-augmented-generation-ai-agent-backend-production.up.railway.app';
 
@@ -67,7 +67,7 @@ function App() {
     setActiveTab('chat');
   };
 
-  const handleSendMessage = async (content: string) => {
+  const handleSendMessage = async (content: string, translateTo?: string) => {
     if (!sessionId) return;
 
     const userMessage: Message = { role: 'user', content };
@@ -81,7 +81,14 @@ function App() {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${localStorage.getItem('token')}`
         },
-        body: JSON.stringify({ session_id: sessionId, query: content, top_k: topK, model: selectedModel, system_prompt: selectedPersona })
+        body: JSON.stringify({ 
+          session_id: sessionId, 
+          query: content, 
+          top_k: topK, 
+          model: selectedModel, 
+          system_prompt: selectedPersona,
+          translate_to: translateTo && translateTo !== 'None' ? translateTo : undefined
+        })
       });
 
       if (!response.ok) throw new Error(`Query failed: ${response.statusText}`);
@@ -216,6 +223,10 @@ function App() {
         setSelectedModel={setSelectedModel}
         selectedPersona={selectedPersona}
         setSelectedPersona={setSelectedPersona}
+        onUpdateFolder={async (id, folder) => {
+          await updateSessionFolder(id, folder);
+          setRecentSessions((prev) => prev.map(s => s.session_id === id ? { ...s, folder } : s));
+        }}
         onLogout={handleLogout}
       />
 

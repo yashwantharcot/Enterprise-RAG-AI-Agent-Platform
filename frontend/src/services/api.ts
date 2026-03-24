@@ -110,6 +110,7 @@ export const deleteDocument = async (sessionId: string, filename: string): Promi
 export interface SessionItem {
   session_id: string;
   name: string;
+  folder?: string | null;
 }
 
 export const getRecentSessions = async (): Promise<SessionItem[]> => {
@@ -124,6 +125,39 @@ export const renameSession = async (sessionId: string, name: string): Promise<{ 
 
 export const deleteSession = async (sessionId: string): Promise<{ message: string }> => {
   const response = await api.delete<{ message: string }>(`/pdf-qa/sessions/${sessionId}`);
+  return response.data;
+};
+
+export const updateSessionFolder = async (sessionId: string, folder: string | null): Promise<{ message: string }> => {
+  const response = await api.put<{ message: string }>(`/pdf-qa/sessions/${sessionId}/folder`, null, {
+    params: folder ? { folder } : {}
+  });
+  return response.data;
+};
+
+export interface WorkspaceStats {
+  chunks: number;
+  queries: number;
+  files_count: number;
+  files: string[];
+}
+
+export const getSessionStats = async (sessionId: string): Promise<WorkspaceStats> => {
+  const response = await api.get<WorkspaceStats>(`/pdf-qa/stats/${sessionId}`);
+  return response.data;
+};
+
+export const lockSession = async (sessionId: string, pin: string): Promise<{ message: string }> => {
+  const response = await api.put<{ message: string }>(`/pdf-qa/sessions/${sessionId}/pin`, null, {
+    params: { pin }
+  });
+  return response.data;
+};
+
+export const verifySessionPin = async (sessionId: string, pin: string): Promise<{ unlocked: boolean }> => {
+  const response = await api.post<{ unlocked: boolean }>(`/pdf-qa/sessions/${sessionId}/verify_pin`, null, {
+    params: { pin }
+  });
   return response.data;
 };
 

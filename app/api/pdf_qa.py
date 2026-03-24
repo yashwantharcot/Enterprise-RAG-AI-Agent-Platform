@@ -171,6 +171,7 @@ class QueryRequest(BaseModel):
     top_k: Optional[int] = 5
     model: Optional[str] = "gemini-1.5-flash"
     system_prompt: Optional[str] = None
+    translate_to: Optional[str] = None
 
 
 @router.post('/query')
@@ -231,6 +232,9 @@ def query_pdf(req: QueryRequest, user_id: str = Depends(get_current_user)):
     for i, cb in enumerate(context_blocks):
         prompt += f"Excerpt {i+1}: {cb}\n\n"
     prompt += f"Question: {req.query}\nAnswer concisely and cite which excerpt you used (e.g., Excerpt 1)."
+    
+    if req.translate_to:
+        prompt += f"\n\n[System Instruction: Respond strictly in the {req.translate_to} language. Do not output English unless specifically quoted in sources.]"
 
     # Use existing cloud LLM engine instead of local flan-t5
     from fastapi.responses import StreamingResponse
@@ -326,7 +330,9 @@ def get_recent_sessions(user_id: str = Depends(get_current_user)):
     for doc in cursor:
         result.append({
             "session_id": doc["session_id"],
-            "name": doc.get("name", "Untitled")
+            "name": doc.get("name", "Untitled"),
+            "folder": doc.get("folder"),
+            "is_locked": "pin_hash" in doc
         })
     return result
 
@@ -338,6 +344,15 @@ def rename_session(session_id: str, name: str, user_id: str = Depends(get_curren
         {"$set": {"name": name}}
     )
     return {"message": "Session renamed"}
+
+@router.put("/sessions/{session_id}/folder")
+def update_session_folder(session_id: str, folder: Optional[str] = None, user_id: str = Depends(get_current_user)):
+    from app.db.mongo import db
+    db["sessions"].update_one(
+        {"session_id": session_id, "user_id": user_id},
+        {"$set": {"folder": folder}}
+    )
+    return {"message": "Session folder updated"}
 
 @router.delete("/sessions/{session_id}")
 def delete_session(session_id: str, user_id: str = Depends(get_current_user)):
@@ -356,3 +371,67 @@ def get_pdf_file(session_id: str, filename: str, user_id: str = Depends(get_curr
         raise HTTPException(status_code=404, detail="File not found")
     from fastapi.responses import FileResponse
     return FileResponse(file_path, media_type='application/pdf')
+
+@router.get("/stats/{session_id}")
+def get_session_stats(session_id: str, user_id: str = Depends(get_current_user)):
+    from app.db.mongo import db
+    chunks_count = db["documents_embedded"].count_documents({"session_id": session_id})
+    history_cursor = db["conversation_history"].find({"session_id": session_id})
+    history = list(history_cursor)
+    files = db["documents_embedded"].distinct("filename", {"session_id": session_id})
+    return {
+        "chunks": chunks_count,
+        "queries": len(history),
+        "files_count": len(files),
+        "files": files
+    }
+
+@router.put("/sessions/{session_id}/pin")
+def lock_session(session_id: str, pin: str, user_id: str = Depends(get_current_user)):
+    from app.db.mongo import db
+    from app.utils.security import hash_password
+    if len(pin) != 4 or not pin.isdigit():
+         raise HTTPException(status_code=400, detail="PIN must be exactly 4 digits")
+    db["sessions"].update_one(
+        {"session_id": session_id, "user_id": user_id},
+        {"$set": {"pin_hash": hash_password(pin)}}
+    )
+    return {"message": "Session locked with PIN"}
+
+@router.post("/sessions/{session_id}/verify_pin")
+def verify_session_pin(session_id: str, pin: str, user_id: str = Depends(get_current_user)):
+    from app.db.mongo import db
+    from app.utils.security import verify_password
+    doc = db["sessions"].find_one({"session_id": session_id, "user_id": user_id})
+    if not doc:
+         raise HTTPException(status_code=404, detail="Session not found")
+    if "pin_hash" not in doc:
+         return {"unlocked": True}
+    if verify_password(pin, doc["pin_hash"]):
+         return {"unlocked": True}
+    return {"unlocked": False}
+
+@router.get("/sessions/{session_id}/export")
+def export_session_files(session_id: str, user_id: str = Depends(get_current_user)):
+    import zipfile
+    import io
+    from fastapi.responses import StreamingResponse
+
+    session_dir = f"app/uploads/{session_id}"
+    if not os.path.exists(session_dir):
+         raise HTTPException(status_code=404, detail="No files found for this session")
+
+    zip_buffer = io.BytesIO()
+    with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
+         for root, _, files in os.walk(session_dir):
+              for file in files:
+                   file_path = os.path.join(root, file)
+                   arcname = os.path.relpath(file_path, session_dir)
+                   zip_file.write(file_path, arcname)
+
+    zip_buffer.seek(0)
+    return StreamingResponse(
+         zip_buffer,
+         media_type="application/zip",
+         headers={"Content-Disposition": f"attachment; filename=workspace_{session_id[:8]}.zip"}
+    )

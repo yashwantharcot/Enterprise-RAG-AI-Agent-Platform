@@ -11,7 +11,7 @@ export interface Message {
 
 interface ChatWindowProps {
   messages: Message[];
-  onSendMessage: (content: string) => void;
+  onSendMessage: (content: string, translateTo?: string) => void;
   isLoading: boolean;
   sessionId: string | null;
 }
@@ -27,6 +27,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   const [currentPdf, setCurrentPdf] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   
+  const [translateTo, setTranslateTo] = useState<string>('None');
   const [isListening, setIsListening] = useState(false);
   const recognitionRef = useRef<any>(null);
 
@@ -80,7 +81,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (input.trim() && !isLoading) {
-      onSendMessage(input);
+      onSendMessage(input, translateTo);
       setInput('');
     }
   };
@@ -205,6 +206,19 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                 className="w-full bg-card border border-border rounded-xl px-5 py-4 pr-24 text-white placeholder:text-gray-600 focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-500 transition-all shadow-xl disabled:opacity-50"
               />
               <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-2">
+                <select
+                  value={translateTo}
+                  onChange={(e) => setTranslateTo(e.target.value)}
+                  disabled={!sessionId || isLoading}
+                  className="bg-black/30 border border-border rounded-lg px-2 py-1 text-xs text-white focus:outline-none focus:ring-1 focus:ring-primary-500 max-w-[80px] truncate [&>option]:bg-[#161b22] [&>option]:text-white"
+                >
+                  <option value="None">Off</option>
+                  <option value="Spanish">Español</option>
+                  <option value="French">Français</option>
+                  <option value="German">Deutsch</option>
+                  <option value="Hindi">हिंदी</option>
+                  <option value="Chinese">中文</option>
+                </select>
                 <button
                   type="button"
                   onClick={handleVoiceInput}
