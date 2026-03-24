@@ -106,22 +106,22 @@ def _get_embedding_from_provider(provider: str, model: str, text: str) -> List[f
                 raise
 
     elif provider == "gemini":
-        print(f"[DEBUG] Requesting Gemini embedding for: {text}")
+        print(f"[DEBUG] Requesting Gemini embedding for text of length {len(text)}")
         if not google_client:
              raise ValueError("Google GenAI client not initialized")
         result = google_client.models.embed_content(model=model, contents=text)
-        print(f"[DEBUG] Gemini embedding response: {result}")
+        print(f"[DEBUG] Gemini embedding response received")
         # The result object from new SDK has an 'embeddings' attribute which is a list
         return result.embeddings[0].values
 
     elif provider == "huggingface":
         url = f"https://api-inference.huggingface.co/pipeline/feature-extraction/{model}"
         headers = {"Authorization": f"Bearer {HF_API_KEY}"} if HF_API_KEY else {}
-        print(f"[DEBUG] Requesting HuggingFace embedding for: {text}")
+        print(f"[DEBUG] Requesting HuggingFace embedding for text of length {len(text)}")
         response = requests.post(url, headers=headers, json={"inputs": text}, timeout=10)
         print(f"[DEBUG] HuggingFace response status: {response.status_code}")
         response.raise_for_status()
-        print(f"[DEBUG] HuggingFace embedding response: {response.json()}")
+        print(f"[DEBUG] HuggingFace embedding response received")
         return response.json()
 
     print(f"[DEBUG] Unknown provider: {provider}")

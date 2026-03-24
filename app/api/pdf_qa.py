@@ -1,4 +1,4 @@
-from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Depends
+from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Depends, BackgroundTasks
 from app.utils.dependencies import get_current_user
 from pydantic import BaseModel
 from typing import Optional, List
@@ -51,7 +51,7 @@ class UrlRequest(BaseModel):
     session_id: Optional[str] = None
 
 @router.post('/upload_url', response_model=UploadResponse)
-async def upload_url(req: UrlRequest, user_id: str = Depends(get_current_user)):
+async def upload_url(req: UrlRequest, background_tasks: BackgroundTasks, user_id: str = Depends(get_current_user)):
     sid = req.session_id or str(uuid4())
     
     try:
@@ -76,10 +76,24 @@ async def upload_url(req: UrlRequest, user_id: str = Depends(get_current_user)):
          raise HTTPException(status_code=500, detail="Failed to generate embeddings for URL")
 
     if sid not in pdf_sessions:
-        pdf_sessions[sid] = { 'chunks': [], 'embeddings': [] }
+        pdf_sessions[sid] = { 'chunks': [], 'embeddings': [], 'owner_id': user_id }
+        try:
+            from app.db.mongo import db
+            from datetime import datetime
+            db["pdf_sessions"].update_one(
+                {"_id": sid},
+                {"$setOnInsert": {"owner_id": user_id, "created_at": datetime.utcnow()}},
+                upsert=True
+            )
+        except Exception:
+            pass
     
     pdf_sessions[sid]['chunks'].extend([{"text": c, "filename": req.url} for c in chunks[:len(embeddings)]])
     pdf_sessions[sid]['embeddings'].extend(embeddings)
+
+    # Async Background Task for GraphRAG
+    from app.services.graph_service import process_graph_async
+    background_tasks.add_task(process_graph_async, sid, chunks)
 
     try:
         from app.db.mongo import db
@@ -102,7 +116,7 @@ async def upload_url(req: UrlRequest, user_id: str = Depends(get_current_user)):
 
 
 @router.post('/upload_pdf', response_model=UploadResponse)
-async def upload_pdf(file: UploadFile = File(...), session_id: Optional[str] = Form(None), user_id: str = Depends(get_current_user)):
+async def upload_pdf(background_tasks: BackgroundTasks, file: UploadFile = File(...), multimodal: bool = Form(False), session_id: Optional[str] = Form(None), user_id: str = Depends(get_current_user)):
     sid = session_id or str(uuid4())
     # Save uploaded file to app/uploads/{sid}
     upload_dir = f"app/uploads/{sid}"
@@ -114,7 +128,11 @@ async def upload_pdf(file: UploadFile = File(...), session_id: Optional[str] = F
         f.write(content)
 
     try:
-        text = extract_pdf_text(save_path)
+        if multimodal:
+            from app.services.multimodal_service import extract_multimodal_pdf
+            text = extract_multimodal_pdf(save_path)
+        else:
+            text = extract_pdf_text(save_path)
     except Exception as e:
         if os.path.exists(save_path):
             os.unlink(save_path)
@@ -139,7 +157,17 @@ async def upload_pdf(file: UploadFile = File(...), session_id: Optional[str] = F
 
     # Multi-PDF Support: Append to existing session in memory if available
     if sid not in pdf_sessions:
-        pdf_sessions[sid] = { 'chunks': [], 'embeddings': [] }
+        pdf_sessions[sid] = { 'chunks': [], 'embeddings': [], 'owner_id': user_id }
+        try:
+            from app.db.mongo import db
+            from datetime import datetime
+            db["pdf_sessions"].update_one(
+                {"_id": sid},
+                {"$setOnInsert": {"owner_id": user_id, "created_at": datetime.utcnow()}},
+                upsert=True
+            )
+        except Exception:
+            pass
     
     pdf_sessions[sid]['chunks'].extend([{"text": c, "filename": file.filename} for c in chunks[:len(embeddings)]])
     pdf_sessions[sid]['embeddings'].extend(embeddings)
@@ -149,10 +177,15 @@ async def upload_pdf(file: UploadFile = File(...), session_id: Optional[str] = F
         from app.db.mongo import db
         from datetime import datetime
         db_docs = []
+        # Smart Versioning
+        existing_v = db["documents_embedded"].count_documents({"session_id": sid, "filename": file.filename})
+        version = existing_v + 1
+        
         for c, e in zip(chunks[:len(embeddings)], embeddings):
             db_docs.append({
                 "session_id": sid,
                 "filename": file.filename,
+                "version": version,
                 "chunk": c,
                 "embedding": e,
                 "timestamp": datetime.utcnow()
@@ -161,6 +194,17 @@ async def upload_pdf(file: UploadFile = File(...), session_id: Optional[str] = F
             db["documents_embedded"].insert_many(db_docs)
     except Exception as e:
         print(f"[WARNING] Failed to save chunks to MongoDB: {e}")
+
+    # Async Background Task for GraphRAG
+    from app.services.graph_service import process_graph_async
+    background_tasks.add_task(process_graph_async, sid, chunks)
+
+    # Async Background Task for Workspace Brief flawlessly
+    try:
+        from app.services.summary_service import generate_document_summary
+        background_tasks.add_task(generate_document_summary, sid, file.filename, text)
+    except Exception:
+        pass
 
     return UploadResponse(session_id=sid, chunks=len(embeddings))
 
@@ -201,17 +245,46 @@ def query_pdf(req: QueryRequest, user_id: str = Depends(get_current_user)):
     if not session:
         raise HTTPException(status_code=404, detail='Session not found')
 
+    # Granular Permission Check for Collaboration
+    from app.services.collab_service import has_permission
+    if not has_permission(req.session_id, user_id, required_role="viewer"):
+        raise HTTPException(status_code=403, detail="Access denied to this workspace")
+
     # Get query embedding using same cloud provider
     q_emb = get_query_embedding(req.query)
 
-    # Find top_k most similar chunks using cosine similarity
-    similarities = []
+    # 1. Sparse BM25 Scores
+    from rank_bm25 import BM25Okapi
+    corpus = [chunk['text'].lower().split() for chunk in session['chunks']]
+    bm25 = BM25Okapi(corpus)
+    query_tokens = req.query.lower().split()
+    sparse_scores = bm25.get_scores(query_tokens)
+
+    # 2. Dense Cosine Scores
+    dense_similarities = []
     for i, emb in enumerate(session['embeddings']):
         sim = _cosine_similarity(q_emb, emb)
-        similarities.append((i, sim))
+        dense_similarities.append((i, sim))
 
-    similarities.sort(key=lambda x: x[1], reverse=True)
-    top_results = similarities[:req.top_k]
+    # Sort indices by dense & sparse scores to create rankings
+    dense_sorted = sorted(dense_similarities, key=lambda x: x[1], reverse=True)
+    dense_rank = {item[0]: rank for rank, item in enumerate(dense_sorted)}
+
+    sparse_with_idx = [(i, score) for i, score in enumerate(sparse_scores)]
+    sparse_sorted = sorted(sparse_with_idx, key=lambda x: x[1], reverse=True)
+    sparse_rank = {item[0]: rank for rank, item in enumerate(sparse_sorted)}
+
+    # 3. Reciprocal Rank Fusion (RRF)
+    combined_scores = []
+    for i in range(len(session['embeddings'])):
+        # Higher rank (better match) yields a higher fusion score
+        d_rank = dense_rank.get(i, 999)
+        s_rank = sparse_rank.get(i, 999)
+        rrf_score = (1 / (60 + d_rank)) + (1 / (60 + s_rank))
+        combined_scores.append((i, rrf_score))
+
+    combined_scores.sort(key=lambda x: x[1], reverse=True)
+    top_results = combined_scores[:req.top_k]
 
     # Build context from retrieved chunks
     context_blocks = []
@@ -228,7 +301,14 @@ def query_pdf(req: QueryRequest, user_id: str = Depends(get_current_user)):
         except Exception:
             pass
 
-    prompt = "Use the following extracted document excerpts to answer the question.\n\nContext:\n"
+    from app.services.graph_service import query_graph_relations
+    query_entities = req.query.split() # Simple node-based split
+    graph_context = query_graph_relations(req.session_id, query_entities)
+
+    prompt = "Use the following extracted document excerpts to answer the question.\n"
+    if graph_context:
+        prompt += graph_context + "\n"
+    prompt += "\nContext:\n"
     for i, cb in enumerate(context_blocks):
         prompt += f"Excerpt {i+1}: {cb}\n\n"
     prompt += f"Question: {req.query}\nAnswer concisely and cite which excerpt you used (e.g., Excerpt 1)."
@@ -241,6 +321,8 @@ def query_pdf(req: QueryRequest, user_id: str = Depends(get_current_user)):
     import json
 
     def generate_sse():
+        import time
+        start_time = time.time()
         full_answer = ""
         try:
             # Send sources in first frame to optimize bandwidth
@@ -249,6 +331,24 @@ def query_pdf(req: QueryRequest, user_id: str = Depends(get_current_user)):
             for chunk in llm_engine.chat_stream(prompt, model_name=req.model, system_prompt=req.system_prompt):
                 full_answer += chunk
                 yield f"data: {json.dumps({'answer': chunk})}\n\n"
+                
+            # Log Analytics telemetry flawlessly
+            duration = time.time() - start_time
+            p_tokens = int(len(prompt.split()) * 1.33)
+            r_tokens = int(len(full_answer.split()) * 1.33)
+            try:
+                from app.services.analytics_service import log_usage
+                log_usage(
+                    user_id=user_id, 
+                    session_id=req.session_id, 
+                    model=req.model or "gemini-1.5-flash", 
+                    prompt_tokens=p_tokens, 
+                    response_tokens=r_tokens, 
+                    latency_sec=round(duration, 3)
+                )
+            except Exception as e:
+                print(f"[Analytics] Log failed: {e}")
+                
         except Exception as e:
             yield f"data: {json.dumps({'error': str(e)})}\n\n"
             return
@@ -325,15 +425,24 @@ def get_history(session_id: str, user_id: str = Depends(get_current_user)):
 @router.get("/recent_sessions")
 def get_recent_sessions(user_id: str = Depends(get_current_user)):
     from app.db.mongo import db
-    cursor = db["sessions"].find({"user_id": user_id}).sort("created_at", -1)
+    
+    own_cursor = db["sessions"].find({"user_id": user_id}).sort("created_at", -1)
+    
+    shared_memberships = list(db["workspace_members"].find({"user_id": user_id}))
+    shared_ids = [m["workspace_id"] for m in shared_memberships]
+    shared_cursor = db["sessions"].find({"session_id": {"$in": shared_ids}}) if shared_ids else []
+
     result = []
-    for doc in cursor:
-        result.append({
-            "session_id": doc["session_id"],
-            "name": doc.get("name", "Untitled"),
-            "folder": doc.get("folder"),
-            "is_locked": "pin_hash" in doc
-        })
+    seen = set()
+    for doc in list(own_cursor) + list(shared_cursor):
+        if doc["session_id"] not in seen:
+            seen.add(doc["session_id"])
+            result.append({
+                "session_id": doc["session_id"],
+                "name": doc.get("name", "Untitled"),
+                "folder": doc.get("folder"),
+                "is_locked": "pin_hash" in doc
+            })
     return result
 
 @router.put("/sessions/{session_id}")

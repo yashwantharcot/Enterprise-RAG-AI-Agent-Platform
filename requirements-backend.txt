@@ -21,3 +21,7 @@ bcrypt==3.2.0
 
 certifi
 beautifulsoup4
+
+rank_bm25
+
+networkx

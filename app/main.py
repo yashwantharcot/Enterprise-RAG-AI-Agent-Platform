@@ -3,6 +3,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from datetime import datetime
 from app.api.pdf_qa import router as pdf_qa_router
 from app.api.auth import router as auth_router
+from app.api.collaboration import router as collab_router
+from app.api.analytics import router as analytics_router
 
 app = FastAPI(title="Retrieval Augmented Generation API")
 
@@ -33,3 +35,9 @@ app.include_router(auth_router, prefix="/api")
 
 # Include PDF QA router
 app.include_router(pdf_qa_router, prefix="/api/pdf-qa")
+
+# Include Collaboration router
+app.include_router(collab_router, prefix="/api/workspace")
+
+# Include Analytics router
+app.include_router(analytics_router, prefix="/api/analytics")
