@@ -118,6 +118,13 @@ export const UploadSection: React.FC<UploadSectionProps> = ({
             )}
           </div>
 
+          {currentSessionId && (
+            <div className="bg-primary-500/10 border border-primary-500/20 rounded-xl p-4 flex items-center gap-2 text-primary-400">
+              <Info size={18} />
+              <p className="text-sm font-medium">Appending to current Workspace Session ({currentSessionId.slice(0,8)}...)</p>
+            </div>
+          )}
+
           <div className="flex items-center justify-between bg-card/50 p-4 rounded-xl border border-border">
             <div className="flex items-center gap-3">
                <div className="w-10 h-10 rounded-lg bg-orange-500/10 flex items-center justify-center">

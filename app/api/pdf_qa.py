@@ -81,10 +81,30 @@ async def upload_pdf(file: UploadFile = File(...), session_id: Optional[str] = F
     if not embeddings:
         raise HTTPException(status_code=500, detail="Failed to generate embeddings for PDF chunks")
 
-    pdf_sessions[sid] = {
-        'chunks': chunks[:len(embeddings)],  # align chunks with successful embeddings
-        'embeddings': embeddings,
-    }
+    # Multi-PDF Support: Append to existing session in memory if available
+    if sid not in pdf_sessions:
+        pdf_sessions[sid] = { 'chunks': [], 'embeddings': [] }
+    
+    pdf_sessions[sid]['chunks'].extend(chunks[:len(embeddings)])
+    pdf_sessions[sid]['embeddings'].extend(embeddings)
+
+    # Persist chunks to MongoDB for scaling across restarts
+    try:
+        from app.db.mongo import db
+        from datetime import datetime
+        db_docs = []
+        for c, e in zip(chunks[:len(embeddings)], embeddings):
+            db_docs.append({
+                "session_id": sid,
+                "filename": file.filename,
+                "chunk": c,
+                "embedding": e,
+                "timestamp": datetime.utcnow()
+            })
+        if db_docs:
+            db["documents_embedded"].insert_many(db_docs)
+    except Exception as e:
+        print(f"[WARNING] Failed to save chunks to MongoDB: {e}")
 
     return UploadResponse(session_id=sid, chunks=len(embeddings))
 
@@ -98,6 +118,27 @@ class QueryRequest(BaseModel):
 @router.post('/query')
 def query_pdf(req: QueryRequest, user_id: str = Depends(get_current_user)):
     session = pdf_sessions.get(req.session_id)
+    
+    # Fallback: Restore session from MongoDB if memory is flushed
+    if not session:
+        try:
+            from app.db.mongo import db
+            cursor = db["documents_embedded"].find({"session_id": req.session_id})
+            db_chunks = []
+            db_embs = []
+            for doc in cursor:
+                db_chunks.append(doc["chunk"])
+                db_embs.append(doc["embedding"])
+            
+            if db_chunks:
+                pdf_sessions[req.session_id] = {
+                    'chunks': db_chunks,
+                    'embeddings': db_embs
+                }
+                session = pdf_sessions[req.session_id]
+        except Exception as e:
+            print(f"[WARNING] Failed to restore session from DB: {e}")
+
     if not session:
         raise HTTPException(status_code=404, detail='Session not found')
 
