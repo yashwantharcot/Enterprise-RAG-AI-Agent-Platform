@@ -26,7 +26,7 @@ def health_check():
 
 @app.get("/")
 def read_root():
-    return {"message": "DealdoxAgent API is running"}
+    return {"message": "Agent API is running"}
 
 # Include Auth router
 app.include_router(auth_router, prefix="/api")
