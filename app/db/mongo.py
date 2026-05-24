@@ -11,7 +11,6 @@ def get_user_profile(user_id):
     return profile if profile else {}
 # app/db/mongo.py
 from pymongo import MongoClient
-import certifi
 from datetime import datetime
 from app.config import MONGO_URI, DB_NAME, TARGET_COLLECTION, SOURCE_COLLECTIONS
 import os
@@ -19,10 +18,7 @@ from bson.objectid import ObjectId
 
 # Consolidate MongoDB setup
 # Initialize client globally once
-uri = os.getenv("MONGODB_URI") or MONGO_URI
-if uri:
-    uri = uri.strip('"').strip("'")
-client = MongoClient(uri, tlsCAFile=certifi.where(), tlsAllowInvalidCertificates=True)
+client = MongoClient(os.getenv("MONGODB_URI") or MONGO_URI)
 
 MONGODB_DB = os.getenv("MONGODB_DB") or DB_NAME or "dev_db"
 MONGODB_COLLECTION = os.getenv("MONGODB_COLLECTION") or TARGET_COLLECTION or "documents"
@@ -38,11 +34,7 @@ conversation_col = db["conversation_history"]
 class MongoHandler:
     def __init__(self, uri=MONGO_URI, db_name=DB_NAME):
         # Use the global client if available, otherwise create a new one
-        if 'client' in globals():
-            self.client = client
-        else:
-            clean_uri = uri.strip('"').strip("'") if uri else uri
-            self.client = MongoClient(clean_uri, tlsCAFile=certifi.where(), tlsAllowInvalidCertificates=True)
+        self.client = client if 'client' in globals() else MongoClient(uri)
         self.db = self.client[db_name]
 
     # === Generic CRUD ===

@@ -13,11 +13,3 @@ tenacity
 groq
 PyMuPDF
 pdfplumber
-passlib[bcrypt]
-python-jose
-cryptography
-email-validator
-bcrypt==3.2.0
-
-certifi
-beautifulsoup4

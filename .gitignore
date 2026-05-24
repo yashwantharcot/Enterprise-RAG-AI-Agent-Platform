@@ -37,3 +37,7 @@ development.bfg-report/
 
 *.pdf
 *.txt
+
+# Node
+node_modules/
+dist/

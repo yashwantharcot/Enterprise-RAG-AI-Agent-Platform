@@ -1,8 +1,7 @@
-import React, { useState, useCallback, useEffect } from 'react';
-import { Upload, FileText, AlertCircle, Info, Globe, Download } from 'lucide-react';
+import React, { useState, useCallback } from 'react';
+import { Upload, FileText, AlertCircle, Info } from 'lucide-react';
 import { Button } from './common/Button';
-import api, { uploadPdf, uploadUrl, getDocuments, deleteDocument, DocumentItem, getSessionStats, WorkspaceStats } from '../services/api';
-import { Trash2 } from 'lucide-react';
+import { uploadPdf } from '../services/api';
 
 interface UploadSectionProps {
   onUploadSuccess: (sessionId: string, chunks: number) => void;
@@ -17,67 +16,6 @@ export const UploadSection: React.FC<UploadSectionProps> = ({
   const [isUploading, setIsUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [dragActive, setDragActive] = useState(false);
-  const [documents, setDocuments] = useState<DocumentItem[]>([]);
-  const [urlInput, setUrlInput] = useState('');
-  const [isUploadingUrl, setIsUploadingUrl] = useState(false);
-
-  const [stats, setStats] = useState<WorkspaceStats | null>(null);
-
-  const fetchDocs = useCallback(async () => {
-    if (currentSessionId) {
-      try {
-        const docs = await getDocuments(currentSessionId);
-        setDocuments(docs);
-      } catch (err) {
-        console.error("Failed to fetch docs:", err);
-      }
-    }
-  }, [currentSessionId]);
-
-  const fetchStats = useCallback(async () => {
-    if (currentSessionId) {
-      try {
-        const data = await getSessionStats(currentSessionId);
-        setStats(data);
-      } catch (err) {
-        console.error("Failed to fetch stats:", err);
-      }
-    }
-  }, [currentSessionId]);
-
-  const handleExportZip = async () => {
-    if (!currentSessionId) return;
-    try {
-      const res = await api.get(`/pdf-qa/sessions/${currentSessionId}/export`, { responseType: 'blob' });
-      const url = window.URL.createObjectURL(new Blob([res.data]));
-      const link = document.createElement('a');
-      link.href = url;
-      link.setAttribute('download', `workspace_${currentSessionId.slice(0,8)}.zip`);
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      window.URL.revokeObjectURL(url);
-    } catch (err) {
-      console.error("Failed to export workspace:", err);
-      setError("Failed to export workspace.");
-    }
-  };
-
-  useEffect(() => {
-    fetchDocs();
-    fetchStats();
-  }, [fetchDocs, fetchStats]);
-
-  const handleDelete = async (filename: string) => {
-    if (!currentSessionId) return;
-    if (!confirm(`Are you sure you want to delete ${filename}?`)) return;
-    try {
-      await deleteDocument(currentSessionId, filename);
-      fetchDocs(); // Refresh!
-    } catch (err) {
-      console.error("Failed to delete doc:", err);
-    }
-  };
 
   const handleDrag = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -119,29 +57,10 @@ export const UploadSection: React.FC<UploadSectionProps> = ({
       const result = await uploadPdf(file, currentSessionId || undefined);
       onUploadSuccess(result.session_id, result.chunks);
       setFile(null);
-      fetchDocs();
-      fetchStats();
     } catch (err: any) {
       setError(err.response?.data?.detail || "Upload failed. Please try again.");
     } finally {
       setIsUploading(false);
-    }
-  };
-
-  const handleUploadUrl = async () => {
-    if (!urlInput.trim()) return;
-    setIsUploadingUrl(true);
-    setError(null);
-    try {
-      const result = await uploadUrl(urlInput, currentSessionId || undefined);
-      onUploadSuccess(result.session_id, result.chunks);
-      setUrlInput('');
-      fetchDocs();
-      fetchStats(); 
-    } catch (err: any) {
-      setError(err.response?.data?.detail || "URL Import failed. Please try again.");
-    } finally {
-      setIsUploadingUrl(false);
     }
   };
 
@@ -199,36 +118,6 @@ export const UploadSection: React.FC<UploadSectionProps> = ({
             )}
           </div>
 
-          <div className="bg-card rounded-2xl border border-border p-6 space-y-4 shadow-xl">
-             <h3 className="text-md font-bold text-white flex items-center gap-2">
-               <Globe size={18} className="text-primary-400" />
-               Import from Web URL
-             </h3>
-             <div className="flex gap-2">
-               <input 
-                 type="url"
-                 placeholder="https://example.com/docs"
-                 value={urlInput}
-                 onChange={(e) => setUrlInput(e.target.value)}
-                 className="flex-1 bg-black/40 border border-border rounded-xl px-4 py-2 text-sm text-white placeholder:text-gray-600 focus:outline-none focus:ring-2 focus:ring-primary-500/50"
-               />
-               <Button 
-                 onClick={handleUploadUrl}
-                 disabled={!urlInput.trim() || isUploadingUrl}
-                 isLoading={isUploadingUrl}
-               >
-                 {isUploadingUrl ? "Fetching..." : "Fetch"}
-               </Button>
-             </div>
-          </div>
-
-          {currentSessionId && (
-            <div className="bg-primary-500/10 border border-primary-500/20 rounded-xl p-4 flex items-center gap-2 text-primary-400">
-              <Info size={18} />
-              <p className="text-sm font-medium">Appending to current Workspace Session ({currentSessionId.slice(0,8)}...)</p>
-            </div>
-          )}
-
           <div className="flex items-center justify-between bg-card/50 p-4 rounded-xl border border-border">
             <div className="flex items-center gap-3">
                <div className="w-10 h-10 rounded-lg bg-orange-500/10 flex items-center justify-center">
@@ -253,68 +142,6 @@ export const UploadSection: React.FC<UploadSectionProps> = ({
             <div className="bg-red-500/10 border border-red-500/20 rounded-xl p-4 flex items-center gap-3 text-red-400 animate-shake">
               <AlertCircle size={20} />
               <p className="text-sm font-medium">{error}</p>
-            </div>
-          )}
-
-          {currentSessionId && (
-            <div className="space-y-6">
-              {stats && (
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <div className="bg-card rounded-xl border border-border p-5 flex flex-col items-center justify-center text-center shadow-md">
-                    <p className="text-xs text-gray-500 font-semibold uppercase tracking-wider">Total Chunks</p>
-                    <p className="text-3xl font-black text-primary-400 mt-1">{stats.chunks}</p>
-                  </div>
-                  <div className="bg-card rounded-xl border border-border p-5 flex flex-col items-center justify-center text-center shadow-md">
-                    <p className="text-xs text-gray-500 font-semibold uppercase tracking-wider">Queries Asked</p>
-                    <p className="text-3xl font-black text-green-400 mt-1">{stats.queries}</p>
-                  </div>
-                  <div className="bg-card rounded-xl border border-border p-5 flex flex-col items-center justify-center text-center shadow-md">
-                    <p className="text-xs text-gray-500 font-semibold uppercase tracking-wider">Documents</p>
-                    <p className="text-3xl font-black text-orange-400 mt-1">{stats.files_count}</p>
-                  </div>
-                </div>
-              )}
-
-              <div className="bg-card rounded-2xl border border-border p-6 space-y-4 shadow-xl">
-                <div className="flex items-center justify-between">
-                  <h3 className="text-lg font-bold text-white flex items-center gap-2">
-                    <div className="w-2 h-6 bg-primary-500 rounded-full"></div>
-                    Workspace Documents
-                  </h3>
-                  {documents.length > 0 && (
-                    <Button onClick={handleExportZip} size="sm" variant="secondary" className="gap-1 flex items-center text-xs px-3 py-1 bg-white/5 border border-white/10 hover:bg-white/10">
-                      <Download size={14} /> Export ZIP
-                    </Button>
-                  )}
-                </div>
-
-
-
-              {documents.length === 0 ? (
-                <p className="text-gray-500 text-sm">No documents in this workspace yet.</p>
-              ) : (
-                <ul className="divide-y divide-border">
-                  {documents.map((doc) => (
-                    <li key={doc.filename} className="py-3 flex items-center justify-between text-sm group">
-                      <div>
-                        <p className="text-white font-semibold flex items-center gap-2">
-                          <FileText size={16} className="text-gray-400" />
-                          {doc.filename}
-                        </p>
-                        <p className="text-gray-500 text-xs mt-1">{doc.chunks} chunks</p>
-                      </div>
-                      <Button 
-                        onClick={() => handleDelete(doc.filename)}
-                        variant="ghost" size="sm" className="text-red-400 hover:bg-red-500/10 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity"
-                      >
-                        <Trash2 size={14} />
-                        Delete
-                      </Button>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
             </div>
           )}
         </div>

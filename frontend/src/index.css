@@ -1,69 +1,39 @@
 @import "tailwindcss";
 
 :root {
-  --background-start: #0d1117;
-  --background-end: #000000;
-  --foreground: #ffffff;
+  --foreground-rgb: 255, 255, 255;
+  --background-start-rgb: 13, 17, 23;
+  --background-end-rgb: 0, 0, 0;
+}
+
+body {
+  color: rgb(var(--foreground-rgb));
+  background: linear-gradient(
+      to bottom,
+      transparent,
+      rgb(var(--background-end-rgb))
+    )
+    rgb(var(--background-start-rgb));
+  min-height: 100vh;
+  margin: 0;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+}
+
+@theme {
+  --color-primary-50: #f0f7ff;
+  --color-primary-100: #e0effe;
+  --color-primary-200: #bae0fd;
+  --color-primary-300: #7cc8fb;
+  --color-primary-400: #38abf8;
+  --color-primary-500: #0e90e9;
+  --color-primary-600: #0271c7;
+  --color-primary-700: #035aa1;
+  --color-primary-800: #074d85;
+  --color-primary-900: #0c406e;
   
   --color-sidebar: #161b22;
   --color-card: #21262d;
   --color-border: #30363d;
-  
-  --primary-500: #0e90e9;
-  --primary-600: #0271c7;
-  --primary-400: #38abf8;
-}
-
-:root.light {
-  --background-start: #f8fafc;
-  --background-end: #e2e8f0;
-  --foreground: #0f172a;
-  
-  --color-sidebar: #f1f5f9;
-  --color-card: #ffffff;
-  --color-border: #e2e8f0;
-}
-
-/* Accent Overrides */
-[data-accent="purple"] {
-  --primary-500: #8b5cf6;
-  --primary-600: #7c3aed;
-  --primary-400: #a78bfa;
-}
-[data-accent="green"] {
-  --primary-500: #10b981;
-  --primary-600: #059669;
-  --primary-400: #34d399;
-}
-[data-accent="orange"] {
-  --primary-500: #f97316;
-  --primary-600: #ea580c;
-  --primary-400: #fb923c;
-}
-
-body {
-  color: var(--foreground);
-  background: linear-gradient(
-      to bottom,
-      transparent,
-      var(--background-end)
-    )
-    var(--background-start);
-  min-height: 100vh;
-  margin: 0;
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
-  transition: background 0.3s ease, color 0.3s ease;
-}
-
-@theme {
-  --color-primary-50: #f0f7ff; /* Can stay static or use vars if needed */
-  --color-primary-400: var(--primary-400);
-  --color-primary-500: var(--primary-500);
-  --color-primary-600: var(--primary-600);
-  
-  --color-sidebar: var(--color-sidebar);
-  --color-card: var(--color-card);
-  --color-border: var(--color-border);
 }
 
 /* Custom Utilities */
