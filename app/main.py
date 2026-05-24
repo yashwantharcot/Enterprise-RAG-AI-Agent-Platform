@@ -186,10 +186,11 @@ app.add_middleware(
         "http://localhost:3000",
         "http://127.0.0.1:3000",
         "https://devqa.dealdox.io",
-        "https://devqa-api.dealdox.io"
+        "https://devqa-api.dealdox.io",
+        "https://retrival-augmented-generation-ai-ag.vercel.app"
     ],
     # Also allow any localhost/127.0.0.1 port for local FE (e.g., 5173, 8080, 4200)
-    allow_origin_regex=r"https?://(localhost|127\.0\.0\.1|.*\.up\.railway\.app)(:\d+)?$",
+    allow_origin_regex=r"https?://(localhost|127\.0\.0\.1|.*\.up\.railway\.app|.*\.vercel\.app)(:\d+)?$",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
