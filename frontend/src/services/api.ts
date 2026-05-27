@@ -4,6 +4,7 @@ const API_URL = import.meta.env.VITE_API_URL || 'https://retrival-augmented-gene
 
 const api = axios.create({
   baseURL: `${API_URL}/api`,
+  timeout: 120000, // 2 minutes to handle Render free-tier cold starts
   headers: {
     'Content-Type': 'application/json',
   },
@@ -37,6 +38,7 @@ export const uploadPdf = async (file: File, sessionId?: string): Promise<UploadR
     headers: {
       'Content-Type': 'multipart/form-data',
     },
+    timeout: 180000, // 3 minutes for upload + PDF processing + embedding generation
   });
   return response.data;
 };

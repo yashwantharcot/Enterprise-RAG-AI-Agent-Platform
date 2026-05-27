@@ -58,7 +58,15 @@ export const UploadSection: React.FC<UploadSectionProps> = ({
       onUploadSuccess(result.session_id, result.chunks);
       setFile(null);
     } catch (err: any) {
-      setError(err.response?.data?.detail || "Upload failed. Please try again.");
+      let message = "Upload failed. Please try again.";
+      if (err.code === "ECONNABORTED" || err.message?.includes("timeout")) {
+        message = "Request timed out. The server may be waking up — please wait a moment and try again.";
+      } else if (err.response?.data?.detail) {
+        message = err.response.data.detail;
+      } else if (!err.response) {
+        message = "Could not reach the server. Please check your connection and try again.";
+      }
+      setError(message);
     } finally {
       setIsUploading(false);
     }
