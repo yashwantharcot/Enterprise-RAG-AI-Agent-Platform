@@ -95,7 +95,7 @@ def health_check():
 
 @app.get("/")
 def read_root():
-    return {"message": "DealdoxAgent API is running"}
+    return {"message": "RAG AI Agent API is running"}
 
 # --- Router Definitions ---
 try:
@@ -185,8 +185,6 @@ app.add_middleware(
     allow_origins=[
         "http://localhost:3000",
         "http://127.0.0.1:3000",
-        "https://devqa.dealdox.io",
-        "https://devqa-api.dealdox.io",
         "https://retrival-augmented-generation-ai-ag.vercel.app"
     ],
     # Also allow any localhost/127.0.0.1 port for local FE (e.g., 5173, 8080, 4200)
@@ -1421,7 +1419,7 @@ async def advanced_query(input_data: AdvancedSearchInput):
         qtext = (input_data.query or input_data.chat.query) if hasattr(input_data, 'query') or hasattr(input_data, 'chat') else None
         qstr = str(qtext) if qtext is not None else ''
         if is_identity_query(qstr):
-            reply = "iam doxi ai assistant developed by dealdox"
+            reply = "I am a PDF AI assistant powered by RAG"
             save_chat(getattr(input_data, 'user_id', None), getattr(input_data, 'session_id', None), getattr(input_data, 'access_token', None), qstr, qstr, reply, [])
             return QueryResponse(
                 answer=reply,
@@ -1867,7 +1865,7 @@ async def get_answer(input_data: QueryInput):
     # Quick identity reply: match before any LLM or retrieval work
     try:
         if is_identity_query(query_text):
-            reply = "iam doxi ai assistant developed by dealdox"
+            reply = "I am a PDF AI assistant powered by RAG"
             save_chat(user_id, session_id, input_data.access_token, query_text, query_text, reply, [])
             return QueryResponse(
                 answer=reply,
@@ -2936,7 +2934,7 @@ async def analyze_pdf(
         # Quick identity reply: if user asked who/what this is
         try:
             if is_identity_query(query):
-                reply = "iam doxi ai assistant developed by dealdox"
+                reply = "I am a PDF AI assistant powered by RAG"
                 # attempt to record chat if session provided
                 try:
                     save_chat(user_id, session_id, access_token, query, query, reply, [])

@@ -1,4 +1,4 @@
-"""Intent classification skeleton for Dealdox CPQ agent.
+"""Intent classification skeleton for RAG AI agent.
 
 Phase: B (Skeleton)
 

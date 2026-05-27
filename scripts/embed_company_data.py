@@ -5,7 +5,7 @@ from pymongo import MongoClient
 import os
 
 # --- CONFIG ---
-COMPANY_URL = "https://www.dealdox.io/"
+COMPANY_URL = ""
 MONGO_URI = os.getenv("MONGODB_URI", "mongodb://localhost:27017/")
 DB_NAME = "dev_db"
 COLLECTION_NAME = "company_cpq_embeddings"

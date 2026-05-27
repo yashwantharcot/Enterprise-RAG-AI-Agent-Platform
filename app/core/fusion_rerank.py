@@ -1,4 +1,4 @@
-"""Fusion + Re‑rank pipeline skeleton for Dealdox CPQ agent.
+"""Fusion + Re‑rank pipeline skeleton for RAG AI agent.
 
 Phase: C (Skeleton)
 

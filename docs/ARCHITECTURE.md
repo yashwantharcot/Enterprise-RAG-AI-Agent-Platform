@@ -1,4 +1,4 @@
-# DealdoxAgent RAG Architecture Overview
+# RAG AI Agent Architecture Overview
 
 This document summarizes the current system design as implemented in this repository (branch: agent_improvement_branch). It reflects the code as of September 16, 2025.
 

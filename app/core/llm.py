@@ -66,7 +66,7 @@ class OpenAIEngine:
         
     def build_prompt(self, query, context_chunks):
         context = "\n\n---\n\n".join(chunk["chunk"] for chunk in context_chunks)
-        agent_identity = "You are an AI assistant named Doxi. Always introduce yourself as Doxi when asked your name."
+        agent_identity = "You are a helpful PDF AI assistant. Answer questions accurately based on the provided context."
         return f"""You are a helpful assistant. {agent_identity}
         Use the following context to answer the question.
         If the answer is not in the context you can use your own knowledge. Whenever you are asked for a quote, give it in clear highlighted order.
@@ -148,7 +148,7 @@ class OpenAIEngine:
                     if response_text:
                         warning_msg = (
                             "⚠️ GPT balance finished, recharge for accurate answers now. "
-                            "Doxi is using free models; accuracy will be less."
+                            "Using free models; accuracy may vary."
                         )
                         response_text = f"{warning_msg}\n\n{response_text}"
                         break
@@ -222,7 +222,7 @@ class OpenAIEngine:
                     if response_text:
                         warning_msg = (
                             "⚠️ GPT balance finished, recharge for accurate answers now. "
-                            "Doxi is using free models; accuracy will be less."
+                            "Using free models; accuracy may vary."
                         )
                         response_text = f"{warning_msg}\n\n{response_text}"
                         break

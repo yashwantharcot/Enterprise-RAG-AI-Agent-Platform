@@ -1,4 +1,4 @@
-# Dealdox CPQ Data Normalization & Enrichment Specification (Template)
+# Data Normalization & Enrichment Specification (Template)
 
 Status: DRAFT  
 Owner: <name / team>  

@@ -3,7 +3,7 @@
 Environment Variables:
   LEXICAL_ENABLE=true                   Enable lexical layer (else fallback to pseudo lexical)
   LEXICAL_ENDPOINT=http://localhost:9200  Base URL
-  LEXICAL_INDEX=dealdox_quotes_search   Index name
+  LEXICAL_INDEX=rag_quotes_search   Index name
   LEXICAL_USERNAME=... (optional basic auth)
   LEXICAL_PASSWORD=... (optional basic auth)
   LEXICAL_API_KEY=...  (alternative auth header)
@@ -73,7 +73,7 @@ class LexicalClient:
     def __init__(self):
         self.enabled = os.getenv("LEXICAL_ENABLE", "false").lower() == "true"
         self.endpoint = os.getenv("LEXICAL_ENDPOINT")
-        self.index = os.getenv("LEXICAL_INDEX", "dealdox_quotes_search")
+        self.index = os.getenv("LEXICAL_INDEX", "rag_quotes_search")
         self.timeout = int(os.getenv("LEXICAL_TIMEOUT_SECS", "3"))
         self.client = None
         if self.enabled and OpenSearch:

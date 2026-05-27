@@ -1,4 +1,4 @@
-# DealdoxAgent — Prioritized TODO
+# RAG AI Agent — Prioritized TODO
 
 This TODO is a single-source prioritized task list for finishing, hardening, and productionizing the agent. Use it as a checklist for sprints and PRs.
 

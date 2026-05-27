@@ -57,8 +57,8 @@ sudo firewall-cmd --reload
   - GitHub: GitHub SSH Key Settings (https://github.com/settings/keys)
 ---
 ```bash
-git clone git@github.com:SPM-Global-Technologies/DealdoxAgent_DEVQA.git
-cd DealdoxAgent_DEVQA
+git clone git@github.com:your-org/RAGAgent.git
+cd RAGAgent
 python3 -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
@@ -93,13 +93,13 @@ After=network.target
 [Service]
 User=ec2-user
 Group=ec2-user
-WorkingDirectory=/home/ec2-user/DealdoxAgent_DEVQA
+WorkingDirectory=/home/ec2-user/RAGAgent
 
 # FIXED: Use bash to launch gunicorn inside the venv
-ExecStart=/bin/bash -c 'source /home/ec2-user/DealdoxAgent_DEVQA/venv/bin/activate && exec gunicorn app.main:app -k uvicorn.workers.UvicornWorker --bind 127.0.0.1:8000 --workers 2 --timeout 120'
+ExecStart=/bin/bash -c 'source /home/ec2-user/RAGAgent/venv/bin/activate && exec gunicorn app.main:app -k uvicorn.workers.UvicornWorker --bind 127.0.0.1:8000 --workers 2 --timeout 120'
 
 Restart=always
-Environment="PATH=/home/ec2-user/DealdoxAgent_DEVQA/venv/bin"
+Environment="PATH=/home/ec2-user/RAGAgent/venv/bin"
 
 [Install]
 WantedBy=multi-user.target
@@ -113,22 +113,22 @@ sudo systemctl start llm-app
 ```
 
 ---
-## 7️⃣ Setup NGINX + SSL (llm.dealdox.io)
+## 7️⃣ Setup NGINX + SSL (your-domain.com)
 ```bash
 sudo apt install certbot python3-certbot-nginx -y
 ```
 Create NGINX config:
 ```bash
-sudo vi /etc/nginx/conf.d/llm.dealdox.io.conf
+sudo vi /etc/nginx/conf.d/your-domain.com.conf
 ```
 Paste:
 ```bash
 server {
     listen 443 ssl;
-    server_name llm.dealdox.io;
+    server_name your-domain.com;
 
-    ssl_certificate /etc/letsencrypt/live/llm.dealdox.io/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/llm.dealdox.io/privkey.pem;
+    ssl_certificate /etc/letsencrypt/live/your-domain.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/your-domain.com/privkey.pem;
     include /etc/letsencrypt/options-ssl-nginx.conf;
     ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;
 
@@ -148,7 +148,7 @@ server {
         proxy_set_header X-Forwarded-Proto $scheme;
 
         # CORS headers
-        add_header 'Access-Control-Allow-Origin' 'https://devqa.dealdox.io' always;
+        add_header 'Access-Control-Allow-Origin' 'https://your-frontend-domain.com' always;
         add_header 'Access-Control-Allow-Methods' 'GET, POST, PUT, DELETE, OPTIONS' always;
         add_header 'Access-Control-Allow-Headers' 'Authorization, Content-Type' always;
         add_header 'Access-Control-Allow-Credentials' 'true' always;
@@ -158,13 +158,13 @@ server {
 # Redirect HTTP to HTTPS
 server {
     listen 80;
-    server_name llm.dealdox.io;
+    server_name your-domain.com;
     return 301 https://$host$request_uri;
 }
 ```
 Then:
 ```bash
-sudo certbot --nginx -d llm.dealdox.io
+sudo certbot --nginx -d your-domain.com
 sudo nginx -t
 sudo systemctl reload nginx
 ```
@@ -187,21 +187,21 @@ cat ~/.ssh/github-deploy   # copy this private key
 1. SSH_KEY: (Paste private key content)
 2. EC2_HOST: Public IP of EC2
 3. EC2_USER: ec2-user
-4. DEPLOY_PATH: /home/ec2-user/DealdoxAgent_DEVQA
+4. DEPLOY_PATH: /home/ec2-user/RAGAgent
 
 ---
 
 ### ✅ On EC2: Create deploy.sh
 ```bash
-vi /home/ec2-user/DealdoxAgent_DEVQA/deploy.sh
+vi /home/ec2-user/RAGAgent/deploy.sh
 ```
 Paste:
 ```bash
 #!/bin/bash
 set -e
 
-cd /home/ec2-user/DealdoxAgent_DEVQA || {
-  echo "❌ Could not change to /home/ec2-user/DealdoxAgent_DEVQA"
+cd /home/ec2-user/RAGAgent || {
+  echo "❌ Could not change to /home/ec2-user/RAGAgent"
   exit 1
 }
 
@@ -280,7 +280,7 @@ jobs:
            MONGODB_URI='$MONGODB_URI' \
            MONGODB_DB='$MONGODB_DB' \
            MONGODB_COLLECTION='$MONGODB_COLLECTION' \
-           bash /home/ec2-user/DealdoxAgent_DEVQA/deploy.sh"
+           bash /home/ec2-user/RAGAgent/deploy.sh"
 ```
 
 Commit and push:
@@ -299,6 +299,6 @@ git push origin Production
 
 ```bash
 sudo systemctl status llm-app
-curl -I https://llm.dealdox.io
+curl -I https://your-domain.com
 ```
 ✅ You should see 200 OK or similar.
