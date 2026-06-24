@@ -1,6 +1,6 @@
 # 🤖 RAG AI Agent - Modular Backend & PDF Q&A
 
-[![Live Demo](https://img.shields.io/badge/Live-Demo-brightgreen?style=for-the-badge&logo=streamlit)](https://retrival-augmented-generation-ai-agent-backend-smew7kqwqkcxvgs.streamlit.app/)
+[![Live Demo](https://img.shields.io/badge/Live-Demo-brightgreen?style=for-the-badge&logo=streamlit)](https://retrival-augmented-generation-ai-ag.vercel.app/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-005571?style=for-the-badge&logo=fastapi)](https://fastapi.tiangolo.com/)
 [![Python](https://img.shields.io/badge/Python-3.9+-3776AB?style=for-the-badge&logo=python)](https://www.python.org/)
 
@@ -11,7 +11,7 @@ A high-performance, modular **Retrieval-Augmented Generation (RAG)** backend des
 ## 🚀 Experience the App
 **Stop reading and start chatting!** You can try the live PDF Q&A interface hosted on Streamlit Cloud:
 
-### ✨ [**Launch Live Demo**](https://retrival-augmented-generation-ai-agent-backend-smew7kqwqkcxvgs.streamlit.app/)
+### ✨ [**Launch Live Demo**](https://retrival-augmented-generation-ai-ag.vercel.app/)
 
 ---
 
